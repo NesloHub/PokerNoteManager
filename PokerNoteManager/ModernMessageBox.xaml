@@ -1,0 +1,172 @@
+<Window x:Class="PokerNoteManager.ModernMessageBox"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="PokerVision HUD"
+        Icon="Assets/app_icon.png"
+        WindowStyle="None"
+        AllowsTransparency="True"
+        Background="Transparent"
+        ShowInTaskbar="False"
+        WindowStartupLocation="CenterOwner"
+        SizeToContent="WidthAndHeight"
+        MinWidth="380"
+        MaxWidth="520"
+        MinHeight="160"
+        KeyDown="Window_KeyDown"
+        FontFamily="Segoe UI, Inter, -apple-system, sans-serif">
+
+    <Window.Resources>
+        <!-- Modern Dialog Button Base Style -->
+        <Style x:Key="DialogBtn" TargetType="Button">
+            <Setter Property="FocusVisualStyle" Value="{x:Null}"/>
+            <Setter Property="FontFamily" Value="Segoe UI, Inter, Arial"/>
+            <Setter Property="FontSize" Value="12"/>
+            <Setter Property="FontWeight" Value="SemiBold"/>
+            <Setter Property="Cursor" Value="Hand"/>
+            <Setter Property="Padding" Value="18,7"/>
+            <Setter Property="BorderThickness" Value="1"/>
+            <Setter Property="SnapsToDevicePixels" Value="True"/>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="Button">
+                        <Border x:Name="border"
+                                Background="{TemplateBinding Background}"
+                                BorderBrush="{TemplateBinding BorderBrush}"
+                                BorderThickness="{TemplateBinding BorderThickness}"
+                                CornerRadius="6"
+                                Padding="{TemplateBinding Padding}"
+                                SnapsToDevicePixels="True">
+                            <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="IsMouseOver" Value="True">
+                                <Setter TargetName="border" Property="Opacity" Value="0.88"/>
+                            </Trigger>
+                            <Trigger Property="IsPressed" Value="True">
+                                <Setter TargetName="border" Property="Opacity" Value="0.75"/>
+                            </Trigger>
+                            <Trigger Property="IsFocused" Value="True">
+                                <Setter TargetName="border" Property="BorderThickness" Value="1.5"/>
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+
+        <!-- Primary Accent Button -->
+        <Style x:Key="PrimaryDialogBtn" TargetType="Button" BasedOn="{StaticResource DialogBtn}">
+            <Setter Property="Background" Value="#2563EB"/>
+            <Setter Property="BorderBrush" Value="#3B82F6"/>
+            <Setter Property="Foreground" Value="#FFFFFF"/>
+        </Style>
+
+        <!-- Danger Accent Button (for destructive confirmations like delete) -->
+        <Style x:Key="DangerDialogBtn" TargetType="Button" BasedOn="{StaticResource DialogBtn}">
+            <Setter Property="Background" Value="#DC2626"/>
+            <Setter Property="BorderBrush" Value="#EF4444"/>
+            <Setter Property="Foreground" Value="#FFFFFF"/>
+        </Style>
+
+        <!-- Secondary Button (Cancel, No, Dismiss) -->
+        <Style x:Key="SecondaryDialogBtn" TargetType="Button" BasedOn="{StaticResource DialogBtn}">
+            <Setter Property="Background" Value="#1E293B"/>
+            <Setter Property="BorderBrush" Value="#334155"/>
+            <Setter Property="Foreground" Value="#CBD5E1"/>
+        </Style>
+    </Window.Resources>
+
+    <!-- Outer Grid with margin to fit the soft glow drop shadow -->
+    <Grid Margin="16">
+        <Border Background="#0B0F19"
+                BorderBrush="#334155"
+                BorderThickness="1"
+                CornerRadius="10"
+                SnapsToDevicePixels="True">
+            <Border.Effect>
+                <DropShadowEffect Color="#000000" BlurRadius="28" ShadowDepth="4" Direction="270" Opacity="0.75"/>
+            </Border.Effect>
+
+            <Grid>
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="38"/> <!-- Title Bar -->
+                    <RowDefinition Height="Auto"/> <!-- Message Content -->
+                    <RowDefinition Height="Auto"/> <!-- Bottom Buttons Bar -->
+                </Grid.RowDefinitions>
+
+                <!-- Top Title Bar -->
+                <Border Grid.Row="0"
+                        Background="#111827"
+                        BorderBrush="#1E293B"
+                        BorderThickness="0,0,0,1"
+                        CornerRadius="9,9,0,0"
+                        MouseLeftButtonDown="Header_MouseDown"
+                        Cursor="Hand">
+                    <Grid>
+                        <StackPanel Orientation="Horizontal" VerticalAlignment="Center" Margin="14,0,0,0">
+                            <Image Source="Assets/app_icon.png" Width="18" Height="18" Margin="0,0,8,0" VerticalAlignment="Center" RenderOptions.BitmapScalingMode="HighQuality"/>
+                            <TextBlock x:Name="TxtTitle" Text="PokerVision HUD" FontWeight="SemiBold" FontSize="12.5" Foreground="#F8FAFC" VerticalAlignment="Center"/>
+                        </StackPanel>
+
+                        <!-- Close Button (X) -->
+                        <Button HorizontalAlignment="Right" Width="38" Height="37" Background="Transparent" BorderThickness="0"
+                                Cursor="Hand" Focusable="False" Click="BtnClose_Click">
+                            <Button.Template>
+                                <ControlTemplate TargetType="Button">
+                                    <Border x:Name="CloseBorder" Background="Transparent" CornerRadius="0,9,0,0">
+                                        <TextBlock Text="✕" FontSize="11" Foreground="#94A3B8" HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                                    </Border>
+                                    <ControlTemplate.Triggers>
+                                        <Trigger Property="IsMouseOver" Value="True">
+                                            <Setter TargetName="CloseBorder" Property="Background" Value="#DC2626"/>
+                                            <Setter Property="TextBlock.Foreground" Value="#FFFFFF"/>
+                                        </Trigger>
+                                    </ControlTemplate.Triggers>
+                                </ControlTemplate>
+                            </Button.Template>
+                        </Button>
+                    </Grid>
+                </Border>
+
+                <!-- Body Content Area -->
+                <Grid Grid.Row="1" Margin="22,20,22,20">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="Auto"/>
+                        <ColumnDefinition Width="*"/>
+                    </Grid.ColumnDefinitions>
+
+                    <!-- Icon Container Badge -->
+                    <Border x:Name="IconBadge" Grid.Column="0" Width="42" Height="42" CornerRadius="21"
+                            Margin="0,0,18,0" VerticalAlignment="Top"
+                            BorderThickness="1" SnapsToDevicePixels="True">
+                        <Path x:Name="IconPath" Width="22" Height="22" Stretch="Uniform" HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                    </Border>
+
+                    <!-- Message Text -->
+                    <TextBlock x:Name="TxtMessage" Grid.Column="1"
+                               Text="Message goes here."
+                               TextWrapping="Wrap"
+                               FontSize="13"
+                               LineHeight="20"
+                               Foreground="#E2E8F0"
+                               VerticalAlignment="Center"/>
+                </Grid>
+
+                <!-- Bottom Button Actions Bar -->
+                <Border Grid.Row="2"
+                        Background="#090D16"
+                        BorderBrush="#1E293B"
+                        BorderThickness="0,1,0,0"
+                        CornerRadius="0,0,9,9"
+                        Padding="16,12">
+                    <StackPanel x:Name="ButtonsPanel" Orientation="Horizontal" HorizontalAlignment="Right">
+                        <Button x:Name="BtnYes" Content="Yes" Style="{StaticResource PrimaryDialogBtn}" Margin="0,0,8,0" Click="BtnYes_Click"/>
+                        <Button x:Name="BtnNo" Content="No" Style="{StaticResource SecondaryDialogBtn}" Margin="0,0,8,0" Click="BtnNo_Click"/>
+                        <Button x:Name="BtnOk" Content="OK" Style="{StaticResource PrimaryDialogBtn}" Margin="0,0,8,0" Click="BtnOk_Click"/>
+                        <Button x:Name="BtnCancel" Content="Cancel" Style="{StaticResource SecondaryDialogBtn}" Click="BtnCancel_Click"/>
+                    </StackPanel>
+                </Border>
+            </Grid>
+        </Border>
+    </Grid>
+</Window>

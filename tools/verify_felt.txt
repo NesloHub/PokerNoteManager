@@ -1,0 +1,15 @@
+﻿== fullscreen.png  window 2050x1184  measured felt 410,377 1238x518
+   HSV mask hit 527884 px (21.7% of the tile)
+   largest blob 369,346 1314x589   size gates (>=25% W, >=10% H) = PASS
+   delta vs measured: dx=-41 dy=-31 dw=76 dh=71   CHECK
+
+== 2tile.png  window 1266x743  measured felt 257,246 760x279
+   HSV mask hit 186404 px (19.8% of the tile)
+   largest blob 228,226 812x300   size gates (>=25% W, >=10% H) = PASS
+   delta vs measured: dx=-29 dy=-20 dw=52 dh=21   CHECK
+
+== 9tile.png  window 837x502  measured felt 172,174 503x184
+   HSV mask hit 88771 px (21.1% of the tile)
+   largest blob 151,160 537x198   size gates (>=25% W, >=10% H) = PASS
+   delta vs measured: dx=-21 dy=-14 dw=34 dh=14   CHECK
+

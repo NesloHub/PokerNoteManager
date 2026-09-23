@@ -1,0 +1,32 @@
+﻿===============================================================
+== fullscreen.png  2559x1439
+-- RING candidates (light blob with dark core, badge size) --
+  x=445 y=677 w=58 h=50 solid=0.67 rgb=220,194,122 darkFrac=0.26 (x/W=0.174 y/H=0.470)
+  x=45 y=222 w=44 h=45 solid=0.56 rgb=211,209,209 darkFrac=0.43 (x/W=0.018 y/H=0.154)
+  x=527 y=45 w=42 h=42 solid=0.61 rgb=215,200,189 darkFrac=0.36 (x/W=0.206 y/H=0.031)
+  x=191 y=49 w=34 h=34 solid=0.73 rgb=204,215,230 darkFrac=0.20 (x/W=0.075 y/H=0.034)
+  x=246 y=731 w=33 h=27 solid=0.77 rgb=210,210,213 darkFrac=0.15 (x/W=0.096 y/H=0.508)
+  x=292 y=731 w=32 h=26 solid=0.82 rgb=217,216,218 darkFrac=0.13 (x/W=0.114 y/H=0.508)
+  x=330 y=155 w=30 h=31 solid=0.51 rgb=131,131,131 darkFrac=0.31 (x/W=0.129 y/H=0.108)
+
+===============================================================
+== 2tile.png  2559x1439
+-- RING candidates (light blob with dark core, badge size) --
+  x=143 y=446 w=68 h=49 solid=0.55 rgb=230,148,150 darkFrac=0.24 (x/W=0.056 y/H=0.310)
+  x=895 y=442 w=37 h=39 solid=0.60 rgb=195,210,99 darkFrac=0.22 (x/W=0.350 y/H=0.307)
+  x=320 y=438 w=35 h=36 solid=0.68 rgb=193,209,99 darkFrac=0.15 (x/W=0.125 y/H=0.304)
+  x=532 y=458 w=35 h=31 solid=0.66 rgb=219,193,121 darkFrac=0.24 (x/W=0.208 y/H=0.318)
+  x=684 y=304 w=29 h=36 solid=0.52 rgb=220,232,243 darkFrac=0.08 (x/W=0.267 y/H=0.211)
+  x=541 y=304 w=27 h=36 solid=0.55 rgb=230,232,233 darkFrac=0.41 (x/W=0.211 y/H=0.211)
+  x=329 y=39 w=26 h=26 solid=0.62 rgb=217,202,191 darkFrac=0.33 (x/W=0.129 y/H=0.027)
+  x=612 y=305 w=31 h=35 solid=0.39 rgb=234,235,237 darkFrac=0.50 (x/W=0.239 y/H=0.212)
+  x=32 y=150 w=26 h=27 solid=0.57 rgb=207,204,204 darkFrac=0.37 (x/W=0.013 y/H=0.104)
+
+===============================================================
+== 9tile.png  2559x1439
+-- RING candidates (light blob with dark core, badge size) --
+  x=434 y=52 w=59 h=48 solid=0.79 rgb=211,213,215 darkFrac=0.08 (x/W=0.170 y/H=0.036)
+  x=95 y=305 w=47 h=45 solid=0.52 rgb=225,156,149 darkFrac=0.30 (x/W=0.037 y/H=0.212)
+  x=304 y=336 w=26 h=30 solid=0.42 rgb=205,140,121 darkFrac=0.22 (x/W=0.119 y/H=0.233)
+
+

@@ -1,0 +1,5 @@
+1. Vær ekstremt kortfattet i dine svar. Ingen høflighedsfraser. Undgå lange forklaringer, medmindre jeg specifikt beder om det.
+2. Læs KUN de filer, der er absolut nødvendige for den aktuelle opgave. Undgå at scanne hele mapper.
+3. Brug ikke output på at genfortælle din plan. Gå direkte til at skrive eller rette koden.
+4. Hvis du sidder fast i den samme fejl 3 gange i træk under test, skal du stoppe og spørge mig om hjælp.
+5. Når du ændrer i kode, må du ALDRIG udskrive hele filen. Brug udelukkende præcise search/replace blokke eller diffs til at vise de specifikke linjer, der skal ændres.

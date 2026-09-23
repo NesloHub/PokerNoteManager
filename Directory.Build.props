@@ -1,0 +1,21 @@
+<Project>
+
+  <!--
+    Build output redirection
+    ========================
+    All intermediate (obj) and output (bin) files are written to E:\Build\PokerNoteManager
+    instead of next to the project, so the C: drive does not fill up (the self-contained
+    win-x64 publish alone is ~1.7 GB).
+
+    Delete this file if you want the output back inside the project folder again.
+    Note: BaseIntermediateOutputPath / MSBuildProjectExtensionsPath are set here (and not in
+    the .csproj) because MSBuild + NuGet read them while importing Microsoft.Common.props.
+  -->
+  <PropertyGroup>
+    <BuildRoot>E:\Build\PokerNoteManager\</BuildRoot>
+    <BaseIntermediateOutputPath>$(BuildRoot)obj\</BaseIntermediateOutputPath>
+    <MSBuildProjectExtensionsPath>$(BuildRoot)obj\</MSBuildProjectExtensionsPath>
+    <BaseOutputPath>$(BuildRoot)bin\</BaseOutputPath>
+  </PropertyGroup>
+
+</Project>
