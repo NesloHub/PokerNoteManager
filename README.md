@@ -1,110 +1,111 @@
 # ♠ Poker Notes (v2.0)
 
-Et lille, hurtigt **notatprogram** til pokerspillere. Ingen live-stats, ingen HUD, ingen OCR —
-kun spillere, tags, notater, historik og eksport.
+A small, fast **note-taking app** for poker players. No live stats, no HUD, no OCR —
+just players, tags, notes, history and export.
 
-Programmet er en omskrivning af det tidligere PokerVision HUD: alt tracker-/statistik-arbejde er
-fjernet, og der er lagt vægt på at det skal føles let og aldrig forstyrre mens man skriver.
-
----
-
-## 🚀 Kom i gang
-
-1. Programmet åbner den database det sidst brugte (stien huskes i `%AppData%\PokerNoteManager_Settings.txt`).
-2. Vælg en spiller i listen til venstre — eller tryk **＋ New player** (Ctrl+N).
-3. Skriv notatet. Det gemmer sig selv ca. et sekund efter du holder op med at skrive.
-   `saved HH:MM:SS` ud for navnet bekræfter.
+It is a rewrite of the earlier PokerVision HUD: all tracker and stats work has been removed,
+and the priority is that it feels light and never disturbs you while you type.
 
 ---
 
-## 🪟 Vinduet
+## 🚀 Getting started
 
-| Område | Indhold |
+1. The app opens the database you used last (the path is remembered in `%AppData%\PokerNoteManager_Settings.txt`).
+2. Pick a player in the list on the left — or press **＋ New player** (Ctrl+N).
+3. Type the note. It saves itself about a second after you stop typing.
+   `saved HH:MM:SS` next to the name confirms it.
+
+---
+
+## 🪟 The window
+
+| Area | Content |
 | :--- | :--- |
-| **Værktøjslinje** | Søgefelt, `＋ New player`, `🏷 Tags`, `📂 Open DB`, `⬇ Export CSV`, `?` (genveje) |
-| **Venstre kolonne** | Tag-filtre (chips) + spillerlisten med tag-oversigt og notat-preview |
-| **Højre kolonne** | Editor: navn (+ Rename / History / Delete), aliases, tags, notater, `Save note copy` / `Save now` |
-| **Statuslinje** | Stien til databasen + antal spillere og tags |
+| **Toolbar** | Search box, `＋ New player`, `🏷 Tags`, `📂 Open DB`, `⬇ Export CSV`, `?` (shortcuts) |
+| **Left column** | Tag filters (chips) + the player list with tag summary and note preview |
+| **Right column** | Editor: name (+ Rename / History / Delete), aliases, tags, notes, `Save note copy` / `Save now` |
+| **Status bar** | Path to the database + number of players and tags |
 
-* **Søgning** (Ctrl+F) rammer navn, aliases **og** selve notatteksten.
-* **Tag-chips** i editoren sætter/fjerner tags med ét klik (fyldt = spilleren har tag'en).
-* **Tag-filtre** under `PLAYERS` viser kun spillere med en bestemt tag.
+* **Search** (Ctrl+F) matches the name, the aliases **and** the note text itself.
+* **Tag chips** in the editor set/remove tags with one click (filled = the player has the tag).
+* **Tag filters** under `PLAYERS` show only players with a given tag.
 
 ---
 
-## 📸 Skærmbillede, capture og hover-bokse
+## 📸 Screenshot, capture and hover boxes
 
-Programmet kan læse spillernavnene fra bordet og vise notaterne ovenpå — uden statistik og
-**uden baggrundsscanning** (der hentes kun billeder når du selv trykker).
+The app can read the player names off the table and show your notes on top — without stats and
+**without background scanning** (images are only grabbed when you press something yourself).
 
-| Knap | Virker sådan |
+| Button | How it works |
 | :--- | :--- |
-| **Skærmvælger** | Vælg hvilken skærm der skal kigges på (valget huskes). Ved museklik/scan bruges skærmen under musen automatisk |
-| **AUTO** | `Auto: off` / 15 s / 30 s / 1 min / 2 min — scanner bordene igen på en timer, så boksene følger spillere der kommer og går. Huskestillingen gemmes. Boksene du fjernede med Ctrl+klik forbliver fjernet |
-| **📸 Capture & Scan** | Middel musetast eller knappen: finder alle vinduer på skærmen, tjekker for grøn filt (browser/lobby springes over - har bordet ikke filt, afgør vinduets titel), læser navnene med OCR og sætter en hover-boks over hvert sæde |
-| **Hover-boks** | Grøn = spilleren findes → notatet (tags + tekst) vises i et kort ved musen. Grå stiplet med `?` = navnet er læst men findes ikke i databasen |
-| **Klik på en boks** | Åbner note-editoren **ude på bordet**: skriv notatet, sæt/fjern tags med et klik og gem med knappen eller Ctrl+Enter. Nye navne oprettes automatisk, og det gamle notat ryger i historikken. Esc eller klik udenfor lukker |
-| **Ctrl+klik på en boks** | Fjerner **den enkelte** boks (fx en forkert OCR-læsning) — og kun på **det bord** den ligger på. Den bliver væk indtil du trykker 🧹 Clear eller genstarter. (Højreklik bruges **ikke**, for det folder på Unibet) |
-| **Samme spiller på flere borde** | Hver boks hører til sit bord: noten er fælles, men fjerner du en boks på bord A, bliver boksen på bord B stående. Hover-kortet viser `ruhhy · at 2 tables`, og statuslinjen tæller dem med |
-| **Note-editoren** | Klikker du en boks for en spiller hvis editor allerede er åben, kommer den samme editor frem igen — der smides ikke skrevet tekst væk. Klikker du en anden spiller, gemmes det du har skrevet først. `Open` åbner spilleren i hovedvinduet |
-| **🗂 DB only: ON/OFF** | Viser kun boks om spillere der allerede findes i databasen — nye navne ignoreres helt. Huskestillingen gemmes |
-| **🏷 Farve på tags** | Boksens ramme får farven fra spillerens første tag, og alle tags skrives ved navnet i deres egen farve (mørke farver lysnes, så de kan læses) |
-| **👁 Boxes: ON/OFF / 🧹 Clear** | Skjul/vis eller fjern boksene |
-| **🔎 Snapshot** | Gemmer de fangede borde med boksene + OCR-læsningerne tegnet på, i `%LocalAppData%\PokerVisionHUD\debug_snapshots\` |
-| **📋 Paste & Scan** | Scanner et skærmbillede fra udklipsholderen og viser navnene som klikbare chips |
-| **✂️ Snip Player** | Læser navnet under musen og åbner/opretter spilleren |
+| **Screen picker** | Choose which screen to look at (the choice is remembered). On a mouse click/scan the screen under the mouse is used automatically |
+| **AUTO** | `Auto: off` / 15 s / 30 s / 1 min / 2 min — rescans the tables on a timer so the boxes follow players who come and go. The setting is remembered. Boxes you removed with Ctrl+click stay removed |
+| **📸 Capture & Scan** | Middle mouse button or the button: finds every window on the screen, checks for green felt (browsers/lobbies are skipped - if the table has no felt, the window title decides), reads the names with OCR and places a hover box over each seat |
+| **Hover box** | Green = the player exists → the note (tags + text) is shown in a card next to the mouse. Grey and dashed with `?` = the name was read but is not in the database |
+| **Click a box** | Opens the note editor **out on the table**: type the note, set/remove tags with one click and save with the button or Ctrl+Enter. New names are created automatically, and the previous note goes into the history. Esc or a click outside closes it |
+| **Ctrl+click a box** | Removes **that single** box (e.g. a wrong OCR read) — and only on **that table**. It stays gone until you press 🧹 Clear or restart. (Right-click is **not** used, because it folds on Unibet) |
+| **Same player at several tables** | Every box belongs to its table: the note is shared, but if you remove a box on table A, the box on table B stays. The hover card shows `ruhhy · at 2 tables`, and the status bar counts them |
+| **The note editor** | If you click a box for a player whose editor is already open, the same editor comes back — text you typed is not thrown away. Clicking another player saves what you have written first. `Open` opens the player in the main window |
+| **🗂 DB only: ON/OFF** | Shows a box only for players that already exist in the database — new names are ignored completely. The setting is remembered |
+| **🏷 Tag colours** | The box border takes the colour of the player's first tag, and every tag is written next to the name in its own colour (dark colours are lightened so they stay readable) |
+| **👁 Boxes: ON/OFF / 🧹 Clear** | Hide/show or remove the boxes |
+| **🔎 Snapshot** | Saves the captured tables with the boxes + the OCR reads drawn on top, in `%LocalAppData%\PokerVisionHUD\debug_snapshots\` |
+| **📋 Paste & Scan** | Scans a screenshot from the clipboard and shows the names as clickable chips |
+| **✂️ Snip Player** | Reads the name under the mouse and opens/creates the player |
 
-**Sådan undgår boksene at forstyrre spillet eller skrivningen** (det var netop her den gamle
-tracker stjal fokus):
+**How the boxes avoid disturbing the game or your typing** (this was exactly where the old
+tracker stole focus):
 
-* Overlayet er **klik-transparent** (`WS_EX_TRANSPARENT`) — alle klik går videre til pokerklienten.
-* Det kan **ikke tage fokus** (`WS_EX_NOACTIVATE` + `ShowActivated = false`) og sættes kun i
-  forgrunden med `SWP_NOACTIVATE`.
-* **Ingen timere:** boksene tegnes kun når du trykker Capture.
-* Hover og klik fanges af en global musekrog der kun *lytter* (til middel musetast og hover),
-  så almindelige klik og tastetryk er urørte.
+* The overlay is **click-through** (`WS_EX_TRANSPARENT`) — every click goes through to the poker client.
+* It **cannot take focus** (`WS_EX_NOACTIVATE` + `ShowActivated = false`) and is only brought to the
+  front with `SWP_NOACTIVATE`.
+* **No timers:** the boxes are only drawn when you press Capture.
+* Hover and clicks are caught by a global mouse hook that only *listens* (middle mouse button and
+  hover), so normal clicks and keystrokes are untouched.
 
-Navnematching er tolerant (OCR-homoglyffer: `1/l/i`, `0/o`, `5/s`, `8/b`, `3/e` samt
-Levenshtein-afstand), så `ug7z` matcher `U87` og `ninja tin` matcher `ninjatin`.
+Name matching is tolerant (OCR homoglyphs: `1/l/i`, `0/o`, `5/s`, `8/b`, `3/e` plus Levenshtein
+distance), so `ug7z` matches `U87` and `ninja tin` matches `ninjatin`.
+
+---
+## 🏷 Tags and colours
+
+* Managed under **🏷 Tags**: create tags, pick a colour as hex (`#FF8C00`), delete tags.
+* Deleting a tag removes it from every player too (after a confirmation).
+* The colours are used on the chips in the editor, in the filter row and in the player list.
+* Stored in `%AppData%\PokerNoteManager_Tags.json` (same file and format as before).
+
+Unused `tag_<number>` leftovers from the old version are not shown in the list.
 
 ---
 
-## 🏷 Tags og farver
+## 🗂 Aliases, history and export
 
-* Administration under **🏷 Tags**: opret tags, vælg farve som hex (`#FF8C00`), slet tags.
-* Sletning af en tag fjerner den fra alle spillere (efter bekræftelse).
-* Farverne bruges på chips i editoren, i filterlinjen og i spillerlisten.
-* Gemmes i `%AppData%\PokerNoteManager_Tags.json` (samme fil og format som før).
-
----
-
-## 🗂 Aliases, historik og eksport
-
-* **Aliases** — andre nick til samme spiller, adskilt med komma. Søgningen matcher dem også.
-* **Historik** — `💾 Save note copy` (Ctrl+E) gemmer en tidsstemplet kopi af notatet.
-  `🕘 History` viser kopierne; vælg én og tryk `↩ Load into editor` for at hente den tilbage.
-  Maks 40 kopier pr. spiller.
-* **CSV-eksport** — alle spillere med aliases, tags, notater og antal historik-kopier
-  (semikolon-adskilt, UTF-8 med BOM, klar til Excel).
+* **Aliases** — other nicks for the same player, separated by commas. Search matches them too.
+* **History** — `💾 Save note copy` (Ctrl+E) stores a timestamped copy of the note.
+  `🕘 History` lists the copies; pick one and press `↩ Load into editor` to bring it back, or
+  `Clear history` to delete them. Max 40 copies per player.
+* **CSV export** — every player with aliases, tags, notes and the number of history copies
+  (semicolon separated, UTF-8 with BOM, ready for Excel).
 
 ---
 
-## ⌨️ Genveje
+## ⌨️ Shortcuts
 
-| Genvej | Handling |
+| Shortcut | Action |
 | :--- | :--- |
-| `Ctrl+N` | Ny spiller |
-| `Ctrl+F` | Hen til søgefeltet |
-| `Ctrl+S` | Gem nu |
-| `Ctrl+E` | Gem en kopi af notatet i historikken |
-| `F2` | Omdøb valgt spiller |
-| `Esc` | Luk dialog / ryd søgningen |
+| `Ctrl+N` | New player |
+| `Ctrl+F` | Jump to the search box |
+| `Ctrl+S` | Save now |
+| `Ctrl+E` | Save a copy of the note in the history |
+| `F2` | Rename the selected player |
+| `Esc` | Close dialog / clear the search |
 
 ---
 
-## 📄 Data og filer
+## 📄 Data and files
 
-Database (`.json`, version 1 — samme format som det tidligere program skrev):
+Database (`.json`, version 1 — the same format the earlier program wrote):
 
 ```json
 {
@@ -120,167 +121,165 @@ Database (`.json`, version 1 — samme format som det tidligere program skrev):
 }
 ```
 
-* Ukendte felter (fx `stats` fra den gamle version) ignoreres ved læsning og skrives ikke mere.
-* **Atomisk gemning**: der skrives først til en `.tmp`-fil, som derefter flyttes på plads.
-* **Én `.bak`** pr. gemning bevares ved siden af databasen.
+* Unknown fields (e.g. `stats` from the old version) are ignored when reading and are no longer written.
+* **Atomic saves**: the file is first written to a `.tmp` file, which is then moved into place.
+* **One `.bak`** per save is kept next to the database.
 
-| Fil | Sted |
+| File | Location |
 | :--- | :--- |
-| Database | Vælges med `📂 Open DB` — stien huskes |
-| Tags og farver | `%AppData%\PokerNoteManager_Tags.json` |
-| Seneste database-sti | `%AppData%\PokerNoteManager_Settings.txt` |
-| Vinduets størrelse/placering | `%AppData%\PokerNotes_Window.txt` |
-| Log (kun opstart/aabninger/fejl) | `%LocalAppData%\PokerVisionHUD\pokervision_debug.log` |
+| Database | Chosen with `📂 Open DB` — the path is remembered |
+| Tags and colours | `%AppData%\PokerNoteManager_Tags.json` |
+| Latest database path | `%AppData%\PokerNoteManager_Settings.txt` |
+| Window size/position | `%AppData%\PokerNotes_Window.txt` |
+| Log (startup, database openings and errors only) | `%LocalAppData%\PokerVisionHUD\pokervision_debug.log` |
 
 ---
 
-## 🔇 Fokus forstyrres ikke mere
+## 🔇 Focus is no longer disturbed
 
-Det tidligere program kørte en baggrundsscanning på en timer, som løbende oprettede og opdaterede
-HUD-vinduer oven på pokerbordene. Hver opdatering satte vinduet `Topmost` og aktiverede det
-(`ShowActivated = true`) — og netop dét stjal fokus fra notatfeltet, mens man skrev.
+The earlier program ran a background scan on a timer, which continuously created and updated HUD
+windows on top of the poker tables. Every refresh set the window `Topmost` and activated it
+(`ShowActivated = true`) — and that is exactly what stole focus from the note field while you typed.
 
-I denne version findes der:
+This version has:
 
-* ingen timere der opretter eller aktiverer vinduer
-* ingen baggrundsscanning (kun når du selv trykker Capture / middel musetast)
-* ingen statistik, ingen tracker, intet der skriver til databasen af sig selv
-* intet der kalder `Activate()` på et vindue (kun når du selv Ctrl+klikker en boks)
+* no timers that create or activate windows
+* no background scanning (only when you press Capture / the middle mouse button)
+* no stats, no tracker, nothing that writes to the database by itself
+* nothing that calls `Activate()` on a window (only when you Ctrl+click a box yourself)
 
-Den eneste baggrundsaktivitet er den udskudte fil-gemning (1,2 sek. efter sidste tastetryk), og den
-rører hverken fokus eller andre vinduer. Alle dialoger (tags, historik, navn, hjælp, scan-resultat)
-er paneler *inde i* hovedvinduet — der åbnes aldrig et ekstra vindue under arbejdet, bortset fra
-hover-overlayet, som er klik-transparent og ikke kan tage fokus.
+The only background activity is the deferred file save (1.2 s after the last keystroke), and it
+touches neither focus nor other windows. All dialogs (tags, history, name, help, scan result) are
+panels *inside* the main window — no extra window is ever opened while you work, apart from the
+hover overlay, which is click-through and cannot take focus.
 
 ---
+## 🛠️ Development: build and release
 
-## 🛠️ Udvikling: build og udgivelse
+### Build output lives on E:
 
-### Build-output ligger på E:
+`Directory.Build.props` in the repo root redirects all build output, so C: does not fill up:
 
-`Directory.Build.props` i repo-roden omdirigerer alt build-output, så C: ikke fyldes op:
-
-| | Sti |
+| | Path |
 | :--- | :--- |
-| Intermediate (`obj`, NuGet-assets) | `E:\Build\PokerNoteManager\obj\` |
-| Output (`bin`, alle konfigurationer) | `E:\Build\PokerNoteManager\bin\` |
+| Intermediate (`obj`, NuGet assets) | `E:\Build\PokerNoteManager\obj\` |
+| Output (`bin`, all configurations) | `E:\Build\PokerNoteManager\bin\` |
 
-### Byg
+### Build
 
 ```powershell
 dotnet build .\PokerNoteManager\PokerNoteManager.csproj -c Debug
 ```
 
-Debug-exe'en ligger herefter i `E:\Build\PokerNoteManager\bin\Debug\net10.0-windows\win-x64\PokerVisionHUD.exe`.
+The Debug exe then lives in `E:\Build\PokerNoteManager\bin\Debug\net10.0-windows\win-x64\PokerVisionHUD.exe`.
 
-### Udgiv release (portabel single-file)
+### Publish a release (portable single file)
 
 ```powershell
-powershell -ExecutionPolicy Bypass -File tools\release_notes.ps1   # publish + kopiér + zip
-powershell -ExecutionPolicy Bypass -File tools\zip_release.ps1     # kun zip
+powershell -ExecutionPolicy Bypass -File tools\release_notes.ps1   # publish + copy + zip
+powershell -ExecutionPolicy Bypass -File tools\zip_release.ps1     # zip only
 ```
 
-Scriptet publicerer `-r win-x64 --self-contained true -p:PublishSingleFile=true`, kopierer exe'en
-til `E:\Poker Tools\PokerVisionHUD_v1.0\`, fjerner OCR-data (`tessdata`/`x64`) fra release-mappen,
-laver en backup af den forrige zip i `E:\Poker Tools\Backups\` og genopbygger
-`PokerVisionHUD_v1.0.zip` (via `ZipFile.CreateFromDirectory` — `Compress-Archive` udelod
-under-mapper). Genvejene på skrivebordet peger stadig på den samme exe.
+The script publishes `-r win-x64 --self-contained true -p:PublishSingleFile=true`, copies the exe to
+`E:\Poker Tools\PokerVisionHUD_v1.0\`, removes the OCR data (`tessdata`/`x64`) from the release folder,
+makes a backup of the previous zip in `E:\Poker Tools\Backups\` and rebuilds `PokerVisionHUD_v1.0.zip`
+(via `ZipFile.CreateFromDirectory` — `Compress-Archive` left the sub folders out). The desktop
+shortcuts still point at the same exe.
 
-### Projekt-indhold
+### Project contents
 
-| Fil | Rolle |
+| File | Role |
 | :--- | :--- |
-| `MainWindow.xaml` / `.xaml.cs` | Al UI: liste, editor, chips, overlays, scan-knapper, genveje, gemning |
-| `NotesData.cs` | Model + fillag (`NotesFile`, `PlayerEntry`, `TagDef`, `NotesStore`) |
-| `Vision\ScreenCapture.cs` | Skærme, vinduesliste, BitBlt-capture + modeltyper (`SeatBox`, `ScanOutcome`) |
-| `Vision\TableScanner.cs` | Filt-detektion, OCR af navneskilte, navne-matching (homoglyffer + Levenshtein) |
-| `Vision\HoverOverlay.cs` | Klik-transparent hover-overlay med boks og notatkort |
-| `Vision\NotePopup.xaml` / `.xaml.cs` | Note-editoren der åbner ude på bordet når man klikker på en boks |
-| `Vision\GlobalMouseHook.cs` | Musekrog: middel musetast = capture, hover/klik til boksene |
-| `PvLog.cs` | Logning til ét sted (opstart og fejl) |
-| `ModernMessageBox.*` | Bekræftelses-/beskedsdialoger i samme stil |
-| `App.xaml.cs` | Enkelt-instans, globale fejlhandlers, opstart |
-| `tools\release_notes.ps1`, `zip_release.ps1` | Release- og zip-scripts |
-| `tools\verify_*.ps1`, `analyze_*.ps1` | Målescripts mod rigtige skærmskud (bruges til at tune zoner/OCR) |
+| `MainWindow.xaml` / `.xaml.cs` | All UI: list, editor, chips, overlays, scan buttons, shortcuts, saving |
+| `NotesData.cs` | Model + file layer (`NotesFile`, `PlayerEntry`, `TagDef`, `NotesStore`) |
+| `Vision\ScreenCapture.cs` | Screens, window list, BitBlt capture + model types (`SeatBox`, `ScanOutcome`) |
+| `Vision\TableScanner.cs` | Felt detection, OCR of name plates, name matching (homoglyphs + Levenshtein) |
+| `Vision\HoverOverlay.cs` | Click-through hover overlay with boxes and note cards |
+| `Vision\NotePopup.xaml` / `.xaml.cs` | The note editor that opens out on the table when you click a box |
+| `Vision\GlobalMouseHook.cs` | Mouse hook: middle mouse button = capture, hover/click for the boxes |
+| `PvLog.cs` | Logging in one place (startup and errors) |
+| `ModernMessageBox.*` | Confirmation/message dialogs in the same style |
+| `App.xaml.cs` | Single instance, global error handlers, startup |
+| `tools\release_notes.ps1`, `zip_release.ps1` | Release and zip scripts |
+| `tools\verify_*.ps1`, `analyze_*.ps1` | Measurement scripts against real screenshots (used to tune zones/OCR) |
 
-Pakker: `OpenCvSharp4` (+ `runtime.win`, `WpfExtensions`) og `Tesseract` 5.2.0. OCR-data
-(`tessdata\eng.traineddata`, 23 MB) og Tesseract-DLL'erne i `x64\` skal ligge ved siden af exe'en —
-det sørger `tools\release_notes.ps1` for.
+Packages: `OpenCvSharp4` (+ `runtime.win`, `WpfExtensions`) and `Tesseract` 5.2.0. The OCR data
+(`tessdata\eng.traineddata`, 23 MB) and the Tesseract DLLs in `x64\` must sit next to the exe — that is
+what `tools\release_notes.ps1` takes care of.
 
-**Vigtigt:** `Tesseract.dll` må **ikke** pakkes ind i single-file exe'en. Tesseracts native loader
-(InteropDotNet) finder `x64\tesseract50.dll` via `Assembly.Location`, som er tom for assemblies
-inde i en bundle → `Value cannot be null (Parameter 'path1')`. Derfor holder csproj-target
-`KeepTesseractOutsideSingleFile` den udenfor, og `PrepareNativePaths()` i `App.xaml.cs` sætter
-arbejdsmappen til exe-mappen, tilføjer `x64` til DLL-søgestien og forindlæser de to native DLL'er.
+**Important:** `Tesseract.dll` must **not** be bundled into the single-file exe. Tesseract's native
+loader (InteropDotNet) finds `x64\tesseract50.dll` through `Assembly.Location`, which is empty for
+assemblies inside a bundle → `Value cannot be null (Parameter 'path1')`. That is why the csproj target
+`KeepTesseractOutsideSingleFile` keeps it outside, and `PrepareNativePaths()` in `App.xaml.cs` sets the
+working directory to the exe folder, adds `x64` to the DLL search path and preloads the two native DLLs.
 
-Fejlfinding af netop dette: `PokerVisionHUD.exe --selftest-ocr` skriver resultatet (og hvilke
-mapper der blev søgt i) til `%LocalAppData%\PokerVisionHUD\selftest.txt`.
+Troubleshooting exactly this: `PokerVisionHUD.exe --selftest-ocr` writes the result (and which folders
+were searched) to `%LocalAppData%\PokerVisionHUD\selftest.txt`.
 
-Programmet har fire selvtest-switches, som alle skriver til den samme `selftest.txt` og afslutter
-sig selv bagefter. De tre sidste lægger desuden et PNG i
-`%LocalAppData%\PokerVisionHUD\debug_snapshots\`, så man kan se resultatet uden at klikke:
+The app has a set of self-test switches, all writing to the same `selftest.txt` and closing themselves
+afterwards. Most of them also drop a PNG in `%LocalAppData%\PokerVisionHUD\debug_snapshots\`, so you can
+see the result without clicking:
 
-| Switch | Kontrollerer |
+| Switch | Checks |
 | :--- | :--- |
-| `--selftest-ocr` | At OCR- og OpenCV-motoren starter i den udgivne build |
-| `--selftest-note` | At note-editoren kan bygges, vise sig, rende og gemme (trykker "Save" programmatisk) |
-| `--selftest-ui` | At hovedvinduet kan bygges og tegnes op (`ui_main_window.png`) |
-| `--selftest-overlay` | At hover-boksene tegnes med tag-farver og navne (`selftest_hover_overlay.png`) |
-| `--selftest-mouse` | At musekrogen fanger venstre-, Ctrl+venstre- og midterklik (sender rigtige klik til et tomt testvindue) |
-| `--selftest-screens` | At boksene rammer rigtigt på **hver** skærm, også en skærm med negativt x (til venstre for hovedskærmen). Renderer et PNG pr. skærm |
+| `--selftest-ocr` | That the OCR and OpenCV engines start in the released build |
+| `--selftest-note` | That the note editor can be built, shown, rendered and saved (presses "Save" programmatically) |
+| `--selftest-ui` | That the main window can be built and rendered (`ui_main_window.png`) |
+| `--selftest-overlay` | That the hover boxes are drawn with tag colours and names (`selftest_hover_overlay.png`) |
+| `--selftest-mouse` | That the mouse hook catches left, Ctrl+left and middle clicks (sends real clicks to an empty test window) |
+### Data-layer round-trip test
 
-### Round-trip-test af datalaget
-
-`E:\Build\NotesRoundTripTest\` (bevidst uden for repo'et, fordi `Directory.Build.props` deler én
-`obj`-mappe for alt under repo-roden): et lille konsol-harness der linker `NotesData.cs` + `PvLog.cs`,
-ændrer én spiller i en **kopi** af den rigtige database, gemmer og genindlæser.
+`E:\Build\NotesRoundTripTest\` (deliberately outside the repo, because `Directory.Build.props` shares one
+`obj` folder for everything under the repo root): a small console harness that links `NotesData.cs` +
+`PvLog.cs`, changes one player in a **copy** of the real database, saves and reloads.
 
 ```powershell
 dotnet run --project E:\Build\NotesRoundTripTest\NotesRoundTrip.csproj
 ```
 
-Den kontrollerer 49 ting: at notater/tags/aliases/historik gemmes, at `stats` og `watch` fra den
-gamle version **bevares**, at der laves `.bak`, at der ikke efterlades `.tmp`, at programmets
-indstillinger ikke røres, hvilke vinduestitler der må læses uden grøn filt, at shell-vinduer
-(IME, input-panel, proceslinje) afvises, at "Snip Player"-klippet kan læses fra et bordvindue, og
-hvilke hover-bokse der tegnes (kun-database-filteret, højreklik-fjernelse **pr. bord**, og at samme
-spiller på flere borde tælles og behandles hver for sig).
+It checks 49 things: that notes/tags/aliases/history are saved, that `stats` and `watch` from the old
+version are **preserved**, that `.bak` is created, that no `.tmp` is left behind, that the app's settings
+are not touched, which window titles may be read without green felt, that shell windows (IME, input panel,
+taskbar) are rejected, that the "Snip Player" clip can be read from a table window, and which hover boxes
+are drawn (the DB-only filter, box removal **per table**, and that the same player at several tables is
+counted and handled individually).
 
 ---
 
-## 🖥️ Skærme, opløsninger og DPI
+## 🖥️ Screens, resolutions and DPI
 
-Programmet er **per-monitor DPI aware** (`app.manifest`: `PerMonitorV2`) og regner alt i fysiske
-pixels. Det betyder:
+The app is **per-monitor DPI aware** (`app.manifest`: `PerMonitorV2`) and does all maths in physical
+pixels. That means:
 
-* **Flere skærme i alle opsætninger**, også en skærm med negativt x/y (til venstre for eller over
-  hovedskærmen). Bokse tegnes på den skærm sædet ligger på, og hover-kortet holder sig inden for
-  skærmen.
-* **Forskellig DPI pr. skærm** (fx 100 % + 150 %): overlayet regner om med den skærmens skala, og
-  note-editoren placerer sig efter DPI'en på den skærm boksen ligger på.
-* **Skærme der ændres mens programmet kører** (til-/frakobling, opløsningsskift): programmet lytter
-  på `DisplaySettingsChanged`, læser skærmlisten igen og bygger hover-lagene forfra.
-* **Små skærme/vinduer**: knap-rækken i scan-baren **ombryder**, så ingen knap kan blive klemt
-  usynlig, og editoren er **scrollbar**, så notatfeltet og gem-knapperne altid kan nås (testet ned
-  til vinduets minimum 880x520).
-* **Vinduesplacering**: gemt vinduesstørrelse/-position klemmes ind i den skærm der findes lige nu,
-  så programmet ikke kan starte "uden for skærmen" efter et skærmskift.
-* **Logfilen roterer** ved 2 MB (`pokervision_debug.log.1`), så den ikke vokser ubegrænset.
+* **Multiple screens in any layout**, including a screen with negative x/y (to the left of or above the
+  main screen). Boxes are drawn on the screen the seat is on, and the hover card stays inside the screen.
+* **Different DPI per screen** (e.g. 100 % + 150 %): the overlay recalculates with that screen's scale,
+  and the note editor positions itself according to the DPI of the screen the box is on.
+* **Screens that change while the app runs** (plug/unplug, resolution change): the app listens to
+  `DisplaySettingsChanged`, re-reads the screen list and rebuilds the hover layers from scratch.
+* **Small screens/windows**: the button row in the scan bar **wraps**, so no button can be squeezed
+  invisible, and the editor is **scrollable**, so the note field and the save buttons can always be reached
+  (tested down to the window minimum 880x520).
+* **Window placement**: the saved window size/position is clamped into the screen that exists right now,
+  so the app cannot start "off screen" after a screen change.
+* **The log file rotates** at 2 MB (`pokervision_debug.log.1`), so it does not grow without limit.
 
-Der er en selvtest til netop dette: `--selftest-screens` tegner tre bokse på hver skærm og gemmer et
-PNG pr. skærm i `%LocalAppData%\PokerVisionHUD\debug_snapshots\`.
+There is a self-test for exactly this: `--selftest-screens` draws three boxes on every screen and saves
+one PNG per screen in `%LocalAppData%\PokerVisionHUD\debug_snapshots\`.
 
 ---
 
-* **v2.1** — optimering og fejlretning før udgivelse: multi-skærm/DPI-robusthed (skærmskift mens
-  programmet kører, klemmende vinduesplacering, DPI-korrekt note-editor), knap-række der ombryder og
-  scrollbar editor på små skærme, valgfri **AUTO-scan** på timer, rotation af logfilen, OCR-motoren
-  oprettes kun én gang (trådsikker), og en hjælpetekst hvis OCR-filerne mangler. Ny `--selftest-screens`.
-* **v2.0.1** — capture-laget tilbage (skærmvælger, hover-bokse, note-editor ude på bordet) plus
-  rettelser efter test på Unibets grå bordtema: vindues-capture i stedet for skrivebords-capture,
-  filten gjort valgfri, kun database-filter, tag-farver på boksene, og et crash i note-editorens
-  lukning fjernet ("Cannot set Visibility ... while a Window is closing").
-* **v2.0** — notatprogram: HUD, tracker, OCR og alle stats fjernet. Ny editor med tags, aliases,
-  historik, CSV-eksport, autosave, enkelt-instans og fokus-venligt UI.
-* **v1.0** — PokerVision HUD (tracker-versionen) findes som backup:
+* **v2.1** — optimisation and bug fixing before release: multi-screen/DPI robustness (screen changes
+  while the app runs, clamped window placement, DPI-correct note editor), a button row that wraps and a
+  scrollable editor on small screens, optional **AUTO scan** on a timer, rotation of the log file, the
+  OCR engine created only once (thread-safe), and a hint if the OCR files are missing. New
+  `--selftest-screens`.
+* **v2.0.1** — the capture layer is back (screen picker, hover boxes, note editor out on the table) plus
+  fixes after testing on Unibet's grey table theme: window capture instead of desktop capture, felt made
+  optional, DB-only filter, tag colours on the boxes, and a crash when closing the note editor removed
+  ("Cannot set Visibility ... while a Window is closing").
+* **v2.0** — notes app: HUD, tracker, OCR and all stats removed. New editor with tags, aliases, history,
+  CSV export, autosave, single instance and a focus-friendly UI.
+* **v1.0** — PokerVision HUD (the tracker build) is kept as a backup:
   `E:\Poker Tools\Backups\PokerVisionHUD_HUD_build_20260922_2013.exe`
+
