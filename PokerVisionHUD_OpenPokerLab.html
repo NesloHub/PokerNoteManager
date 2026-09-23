@@ -3,8 +3,8 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Poker Notes v2.0 | OpenPokerLab.org - Portable Poker Player Notes (No HUD, No Tracker)</title>
-    <meta name="description" content="Poker Notes by OpenPokerLab is the portable, tracker-free successor to PokerVision HUD: player notes, tags, aliases, note history, CSV export and optional OCR hover boxes that never steal focus.">
+    <title>Poker Notes v2.0 | OpenPokerLab.org - Portable Poker Player Notes</title>
+    <meta name="description" content="Poker Notes by OpenPokerLab is a portable Windows notes app for poker: write reads with autosave, organise players with colour-coded tags, aliases and note history, export to CSV and optionally show your own notes in hover boxes on your tables.">
     <link rel="icon" type="image/png" href="favicon.png">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -989,7 +989,7 @@
         .faq-section,
         #features,
         #guide,
-        #changelog { margin-bottom: 72px; }
+        #download { margin-bottom: 72px; }
 
         /* The product shot: a real window, framed like one */
         .app-shot { margin: 8px auto 72px auto; }
@@ -1039,7 +1039,6 @@
                 <li><a href="#appshot">The App</a></li>
                 <li><a href="#features">Features</a></li>
                 <li><a href="#guide">User Guide</a></li>
-                <li><a href="#changelog">What's New</a></li>
                 <li><a href="#safety">TOS Safety</a></li>
                 <li><a href="#faq">FAQ</a></li>
                 <li><a href="#download" class="btn-nav-cta">Download v2.0</a></li>
@@ -1052,14 +1051,14 @@
         <div class="container">
             <div class="badge-pill">
                 <span class="badge-dot"></span>
-                OpenPokerLab &bull; v2.0 Portable &mdash; successor to PokerVision HUD
+                OpenPokerLab &bull; Poker Notes v2.0 &bull; Portable Windows app
             </div>
             <h1>Player notes that <em>never steal focus</em></h1>
             <p class="lead">
-                Poker Notes is the rebuild of PokerVision HUD with the tracker taken out. No live VPIP/PFR stats,
-                no timers and no background scanning &mdash; just an instant notes editor with tags, aliases, note
-                history and CSV export, plus optional OCR hover boxes that read the seat names off your tables and
-                show your own notes right there. 100% local, 100% TOS safe.
+                Poker Notes is a fast, portable notes app for poker. Write a read on any opponent while you play,
+                tag it in your own colours and find it again in a single keystroke. Autosave, aliases, note history
+                and CSV export are built in, and the optional hover boxes read the seat names off your tables with
+                OCR and show your own notes right there &mdash; without ever stealing focus. 100% local, 100% TOS safe.
             </p>
             <div class="hero-actions">
                 <a href="#download" class="btn-primary" id="hero-dl-btn">
@@ -1108,15 +1107,15 @@
     <section class="container" id="features">
         <div class="section-header">
             <div class="section-label">What is inside</div>
-            <h2 class="section-title">A notes app - not a tracker</h2>
-            <p class="section-desc">Everything you need to write, find and reuse your reads on hundreds of opponents - without a single stat field, timer or hand-history engine.</p>
+            <h2 class="section-title">Everything you need to keep your reads</h2>
+            <p class="section-desc">Write, tag, search and reuse your reads on hundreds of opponents - in one self-contained app that stays out of the way while you play.</p>
         </div>
         <div class="features-grid">
             <!-- 1 -->
             <div class="feature-card">
                 <div class="feature-icon-box">⚡</div>
                 <h3>Focus-first editor</h3>
-                <p>Type and stay typing. There are no timers that create windows, no <code>Topmost</code> updates and no <code>Activate()</code> calls - the deferred save runs 1.2 s after your last keystroke and never touches focus.</p>
+                <p>Type and stay typing. Your note saves itself about a second after the last keystroke - and the app never steals focus, never moves a window and never interrupts your play.</p>
             </div>
             <!-- 2 -->
             <div class="feature-card">
@@ -1184,8 +1183,8 @@
                         <li>
                             <div class="step-num">2</div>
                             <div>
-                                <strong>Run PokerVisionHUD.exe</strong><br>
-                                The app opens the database you used last; the path is remembered in <code>%AppData%\PokerNoteManager_Settings.txt</code>. So a fresh install starts with your existing notes already loaded.
+                                <strong>Run the app</strong><br>
+                                Double-click the EXE you just unzipped. The app opens the database you used last; the path is remembered in <code>%AppData%\PokerNoteManager_Settings.txt</code>, so you only ever point it at your file once.
                             </div>
                         </li>
                         <li>
@@ -1199,7 +1198,7 @@
                 </div>
                 <div class="guide-callout">
                     <h4 style="font-family: var(--font-display); font-size: 1.1rem; margin-bottom: 8px;">💡 Pro-tip for multi-tablers</h4>
-                    <p style="font-size: 0.9rem; color: var(--text-muted); margin-bottom: 12px;">Set <strong>AUTO</strong> to 30 s or 1 min and the hover boxes follow players who come and go - without a single timer ever creating or activating a window. Boxes you removed yourself stay removed.</p>
+                    <p style="font-size: 0.9rem; color: var(--text-muted); margin-bottom: 12px;">Set <strong>AUTO</strong> to 30 s or 1 min and the hover boxes follow players who come and go. Boxes you removed yourself stay removed.</p>
                     <div class="code-box">
                         <span>%AppData%\PokerNoteManager_Settings.txt</span>
                         <button class="btn-copy" onclick="copySnippet('%AppData%\\PokerNoteManager_Settings.txt')">Copy</button>
@@ -1243,7 +1242,7 @@
                 </div>
                 <div class="guide-callout">
                     <h4 style="font-family: var(--font-display); font-size: 1.1rem; margin-bottom: 8px;">🏷 Where your colours live</h4>
-                    <p style="font-size: 0.9rem; color: var(--text-muted); margin-bottom: 12px;">Tags and their colours are stored in a small JSON file next to your settings, so your colour scheme survives a database switch. Left-over <code>tag_&lt;number&gt;</code> entries from the old HUD version are ignored instead of shown as garbage tags.</p>
+                    <p style="font-size: 0.9rem; color: var(--text-muted); margin-bottom: 12px;">Tags and their colours are stored in a small JSON file next to your settings, so your colour scheme survives a database switch and every tag keeps its own swatch.</p>
                     <div class="code-box">
                         <span>%AppData%\PokerNoteManager_Tags.json</span>
                         <button class="btn-copy" onclick="copySnippet('%AppData%\\PokerNoteManager_Tags.json')">Copy</button>
@@ -1280,7 +1279,7 @@
                         <li>
                             <div class="step-num">✓</div>
                             <div>
-                                <strong>Ctrl+click to edit on the table:</strong> opens the note editor right there. Write, toggle tags with a click and save with the button or <code>Ctrl+Enter</code>. New names are created automatically and the old note is copied into the history. <code>Esc</code> or a click outside closes it. A normal click always goes through to the poker client, and right-click is never used (it folds on Unibet).
+                                <strong>Ctrl+click to edit on the table:</strong> opens the note editor right there. Write, toggle tags with a click and save with the button or <code>Ctrl+Enter</code>. New names are created automatically and the previous version of the note is copied into the history. <code>Esc</code> or a click outside closes it. A normal click always goes through to the poker client, and right-click is never used (it folds on Unibet).
                             </div>
                         </li>
                         <li>
@@ -1356,7 +1355,7 @@
                         <li>
                             <div class="step-num">✓</div>
                             <div>
-                                <strong>The database:</strong> a JSON file in the same format the HUD version wrote (<code>version 1</code>: players, tags, notes, note_history, aliases). Old <code>stats</code> and <code>watch</code> fields are ignored but preserved, so an old file opens unchanged and no note is lost.
+                                <strong>The database:</strong> one plain JSON file (<code>version 1</code>: players, tags, notes, note_history, aliases). Point the app anywhere with <strong>Open DB</strong>, copy the file to a USB stick and your reads travel with you.
                             </div>
                         </li>
                         <li>
@@ -1368,7 +1367,7 @@
                         <li>
                             <div class="step-num">✓</div>
                             <div>
-                                <strong>Settings &amp; log:</strong> <code>PokerNoteManager_Settings.txt</code> (last database), <code>PokerNoteManager_Tags.json</code> (tags + colours) and <code>PokerNotes_Window.txt</code> (window size) live in <code>%AppData%</code>. The log <code>%LocalAppData%\PokerVisionHUD\pokervision_debug.log</code> rotates at 2 MB and opens straight from the <code>?</code> menu.
+                                <strong>Settings &amp; log:</strong> <code>PokerNoteManager_Settings.txt</code> (last database), <code>PokerNoteManager_Tags.json</code> (tags + colours) and <code>PokerNotes_Window.txt</code> (window size) live in <code>%AppData%</code>. The log <code>pokervision_debug.log</code> (in <code>%LocalAppData%</code>) rotates at 2 MB and opens straight from the <code>?</code> menu.
                             </div>
                         </li>
                     </ul>
@@ -1388,102 +1387,13 @@
 
                 <div class="guide-callout">
                     <h4 style="font-family: var(--font-display); font-size: 1.1rem; margin-bottom: 8px;">🧪 Power-user self tests</h4>
-                    <p style="font-size: 0.9rem; color: var(--text-muted); margin-bottom: 12px;">The EXE ships with its own diagnostics. Start it with a switch and the answer is written to <code>%LocalAppData%\PokerVisionHUD\selftest.txt</code> - the UI and screen tests also save PNGs in <code>debug_snapshots</code>, ready to send along if something looks off.</p>
+                    <p style="font-size: 0.9rem; color: var(--text-muted); margin-bottom: 12px;">The app ships with its own diagnostics. Start it with a switch and the answer is written to a text file in the log folder - the UI and screen tests also save PNGs in <code>debug_snapshots</code>, ready to send along if something looks off.</p>
                     <div class="code-box">
                         <span>--selftest-ocr · --selftest-ui · --selftest-overlay · --selftest-screens</span>
-                        <button class="btn-copy" onclick="copySnippet('PokerVisionHUD.exe --selftest-ocr')">Copy</button>
+                        <button class="btn-copy" onclick="copySnippet('--selftest-ocr')">Copy</button>
                     </div>
                 </div>
             </div>
-        </div>
-    </section>
-
-    <!-- What's new: the v2.0 rebuild -->
-    <section class="container stats-explorer" id="changelog">
-        <div class="section-header">
-            <div class="section-label">What's new</div>
-            <h2 class="section-title">The HUD left - the notes stayed</h2>
-            <p class="section-desc">Poker Notes is the same program, rebuilt around the thing you actually used: your own reads. Here is exactly what changed, and why.</p>
-        </div>
-
-        <div class="stats-grid">
-            <!-- Removed -->
-            <div class="stat-card">
-                <div class="stat-badge" style="background: rgba(244, 63, 94, 0.15); color: #f43f5e;">REMOVED</div>
-                <h4>Live stat tracking</h4>
-                <p>VPIP, PFR, 3-Bet, Fold-to-3-Bet, hand demarcation, action-badge watching, auto-tag rules, the watchlist and table calibration are gone. The database no longer writes a <code>stats</code> field.</p>
-                <div class="stat-thresholds">
-                    <strong>Why:</strong> optical statistics drifted between sessions and themes - and a wrong number is worse than no number.
-                </div>
-            </div>
-
-            <!-- Fixed -->
-            <div class="stat-card">
-                <div class="stat-badge" style="background: rgba(16, 185, 129, 0.15); color: #10b981;">FIXED</div>
-                <h4>Focus stealing - the real bug</h4>
-                <p>The old build refreshed its HUD windows on a timer, forced them <code>Topmost</code> and activated them. That is exactly what took the cursor out of the notes field while you were typing.</p>
-                <div class="stat-thresholds">
-                    <strong>Now:</strong> no timer creates or activates a window, the overlay cannot take focus (<code>WS_EX_NOACTIVATE</code>) and can only be brought forward with <code>SWP_NOACTIVATE</code>.
-                </div>
-            </div>
-
-            <!-- Kept -->
-            <div class="stat-card">
-                <div class="stat-badge" style="background: rgba(56, 189, 248, 0.15); color: #38bdf8;">KEPT</div>
-                <h4>Every note you ever wrote</h4>
-                <p>An existing database opens unchanged: players, tags, notes, note history and aliases are read from the same <code>version 1</code> JSON layout the HUD version wrote.</p>
-                <div class="stat-thresholds">
-                    <strong>Bonus:</strong> the legacy <code>stats</code> and <code>watch</code> fields are preserved on disk instead of being thrown away.
-                </div>
-            </div>
-
-            <!-- New -->
-            <div class="stat-card">
-                <div class="stat-badge" style="background: rgba(168, 85, 247, 0.15); color: #a855f7;">NEW</div>
-                <h4>Capture &amp; hover boxes, rebuilt</h4>
-                <p>The overlay is click-through (<code>WS_EX_TRANSPARENT</code>), so every click reaches the poker client. Boxes can be removed one by one and per table, plus DB-only mode, tag colours, Snapshot PNGs and an on-table note editor.</p>
-                <div class="stat-thresholds">
-                    <strong>Also:</strong> multi-monitor and per-monitor DPI aware, window placement clamped to the screens that exist right now.
-                </div>
-            </div>
-
-            <!-- Legacy -->
-            <div class="stat-card">
-                <div class="stat-badge" style="background: rgba(100, 116, 139, 0.2); color: #94a3b8;">LEGACY</div>
-                <h4>Nothing was taken away</h4>
-                <p>Miss the numbers? The tracker build (PokerVision HUD v1.0) is kept as a separate backup, so the old live-stats version is still there whenever you want it.</p>
-                <div class="stat-thresholds">
-                    <strong>Both programs</strong> read and write the very same <code>.json</code> database file.
-                </div>
-            </div>
-        </div>
-
-        <div style="max-width: 860px; margin: 0 auto 100px auto; background: var(--bg-card); border: 1px solid var(--border-subtle); border-radius: 20px; padding: 30px;">
-            <h3 style="font-family: var(--font-display); font-size: 1.25rem; margin-bottom: 16px;">Version history</h3>
-            <ul class="guide-steps">
-                <li>
-                    <div class="step-num">✓</div>
-                    <div>
-                        <strong>v2.0 - the notes release</strong><br>
-                        Tracker and stat engine removed. The notes editor arrives with autosave, tags with hex colours, aliases, note history, CSV export, single-instance protection and a focus-friendly UI.
-                    </div>
-                </li>
-                <li>
-                    <div class="step-num">✓</div>
-                    <div>
-                        <strong>Also in this build - capture and robustness</strong><br>
-                        The capture layer is included (screen picker, hover boxes, on-table note editor, DB-only filter, optional AUTO scan) together with multi-monitor and DPI fixes, log rotation at 2 MB, a wrapping scan bar, a scrollable editor on small screens and a thread-safe OCR engine.
-                    </div>
-                </li>
-                <li>
-                    <div class="step-num">✓</div>
-                    <div>
-                        <strong>v1.0 - legacy HUD</strong><br>
-                        The original OCR tracker with live VPIP/PFR stats, kept as a backup for anyone who still wants the numbers.
-                    </div>
-                </li>
-            </ul>
-            <p style="font-size: 0.85rem; color: var(--text-dim); margin-top: 6px;">Note: the packaged EXE still reports version 2.0.0 and keeps the file name <code>PokerVisionHUD.exe</code> - so your shortcuts, settings and databases keep working without a single change.</p>
         </div>
     </section>
 
@@ -1551,11 +1461,11 @@
 
         <div class="faq-item open">
             <div class="faq-question" onclick="toggleFaq(this)">
-                <span>Does Poker Notes still show live VPIP / PFR stats?</span>
+                <span>Does Poker Notes show VPIP / PFR or any other stats?</span>
                 <span class="faq-icon">▼</span>
             </div>
             <div class="faq-answer">
-                No - and that is deliberate. The optical stat engine was removed in v2.0 because on-screen numbers drift with themes, bet sizes and skins: a wrong VPIP is worse than none, and the timer that refreshed them was exactly what stole focus while you were typing. Notes, tags, aliases and history all stay, and the old tracker build (v1.0) is kept as a separate backup download if you still want the numbers.
+                No - Poker Notes is a notes app, not a stat engine. It keeps the reads <em>you</em> write: free-text notes, colour-coded tags, aliases and a timestamped history per player, plus CSV export when you want a spreadsheet. Nothing to calibrate, nothing that can drift, and nothing that has to be right to the last decimal - only your own words.
             </div>
         </div>
 
@@ -1581,11 +1491,11 @@
 
         <div class="faq-item">
             <div class="faq-question" onclick="toggleFaq(this)">
-                <span>Is my old PokerVision HUD database still usable?</span>
+                <span>Where does my player database live?</span>
                 <span class="faq-icon">▼</span>
             </div>
             <div class="faq-answer">
-                Yes. Poker Notes reads and writes the same <code>version 1</code> JSON layout, so an existing file opens unchanged with all players, tags, notes, aliases and note history. The legacy <code>stats</code> and <code>watch</code> fields are preserved on disk but no longer used, and a <code>.bak</code> copy of the previous file is written before every save.
+                In a single plain <code>.json</code> file that you pick yourself with <strong>Open DB</strong> - players, tags, notes, note_history and aliases in one readable file. A <code>.bak</code> copy of the file is written before every save, so a bad edit can never cost you more than the last change you made.
             </div>
         </div>
 
@@ -1637,7 +1547,7 @@
                 <span>💻 OS: Windows 10 / 11 (x64)</span>
                 <span>🛡️ No installer · no admin rights · no network calls</span>
             </div>
-            <p style="font-size: 0.85rem; color: var(--text-dim); margin-top: 20px;">Keep <code>Tesseract.dll</code>, the <code>tessdata\</code> folder and the <code>x64\</code> DLLs next to <code>PokerVisionHUD.exe</code>; they are only used by the optional Capture &amp; OCR features. The download is served from GitHub Releases (release v2.0.0).</p>
+            <p style="font-size: 0.85rem; color: var(--text-dim); margin-top: 20px;">Keep <code>Tesseract.dll</code>, the <code>tessdata\</code> folder and the <code>x64\</code> DLLs in the same folder as the EXE; they are only used by the optional Capture &amp; OCR features. The download is served from GitHub Releases (release v2.0.0).</p>
         </div>
     </section>
 
@@ -1649,7 +1559,6 @@
                 <li><a href="#appshot">The App</a></li>
                 <li><a href="#features">Features</a></li>
                 <li><a href="#guide">User Guide</a></li>
-                <li><a href="#changelog">What's New</a></li>
                 <li><a href="#safety">TOS Compliance</a></li>
                 <li><a href="#faq">FAQ</a></li>
                 <li><a href="#download">Download</a></li>
