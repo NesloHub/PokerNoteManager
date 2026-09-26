@@ -41,10 +41,13 @@ The app can read the player names off the table and show your notes on top — w
 | :--- | :--- |
 | **Screen picker** | Choose which screen to look at (the choice is remembered). On a mouse click/scan the screen under the mouse is used automatically |
 | **AUTO** | `Auto: off` / 15 s / 30 s / 1 min / 2 min — rescans the tables on a timer so the boxes follow players who come and go. The setting is remembered. Boxes you removed with Ctrl+click stay removed |
-| **📸 Capture & Scan** | Middle mouse button or the button: finds every window on the screen, checks for green felt (browsers/lobbies are skipped - if the table has no felt, the window title decides), reads the names with OCR and places a hover box over each seat |
+| **📸 Capture & Scan** | Middle mouse button or the button: finds every window on the screen, checks for green felt (browsers/lobbies are skipped - if the table has no felt, the window title decides), reads the names with OCR and places a hover box over each seat. Every name plate is also found and read on its own, which takes a moment longer per table but reads noticeably more names correctly |
 | **Hover box** | Green = the player exists → the note (tags + text) is shown in a card next to the mouse. Grey and dashed with `?` = the name was read but is not in the database |
-| **Click a box** | Opens the note editor **out on the table**: type the note, set/remove tags with one click and save with the button or Ctrl+Enter. New names are created automatically, and the previous note goes into the history. Esc or a click outside closes it |
+| **Click a box** | Opens the note editor **out on the table**: type the note, set/remove tags with one click and save with the button or Ctrl+Enter. New names are created automatically, and the previous note goes into the history. Esc or a click outside closes it. The editor opens on the *first* click and takes the keyboard right away |
 | **Ctrl+click a box** | Removes **that single** box (e.g. a wrong OCR read) — and only on **that table**. It stays gone until you press 🧹 Clear or restart. (Right-click is **not** used, because it folds on Unibet) |
+| **📌 Box here / Ctrl+middle click** | The manual way to box a player: select the player in the list and press Ctrl + middle mouse button **on the table**, right where the name is (or use the 📌 Box here button, which uses the place the mouse was last on a table). The box behaves like a scanned one, but no scan ever removes it — only 🧹 Clear or a restart |
+| **➕ Add to table** | The one to use after a **search**: pick the player in the list and press it, and a box for that player is put where the mouse last was on a table (drag it with the middle mouse button if it sits slightly off). If the mouse has not been over a table yet, the marking layer opens instead — drag (or click) where the name is and the box is put there, the size of the name. Same as 📌 Box here, but right next to the list where you just found the player |
+| **Middle mouse drag a box** | Move a hover box: hold the middle mouse button down on a box and drag it where you want it (the name plate may sit slightly off, or the box may cover the stack). The box stays where you put it, also after the next scan, until 🧹 Clear |
 | **Same player at several tables** | Every box belongs to its table: the note is shared, but if you remove a box on table A, the box on table B stays. The hover card shows `ruhhy · at 2 tables`, and the status bar counts them |
 | **The note editor** | If you click a box for a player whose editor is already open, the same editor comes back — text you typed is not thrown away. Clicking another player saves what you have written first. `Open` opens the player in the main window |
 | **🗂 DB only: ON/OFF** | Shows a box only for players that already exist in the database — new names are ignored completely. The setting is remembered |
@@ -52,7 +55,21 @@ The app can read the player names off the table and show your notes on top — w
 | **👁 Boxes: ON/OFF / 🧹 Clear** | Hide/show or remove the boxes |
 | **🔎 Snapshot** | Saves the captured tables with the boxes + the OCR reads drawn on top, in `%LocalAppData%\PokerVisionHUD\debug_snapshots\` |
 | **📋 Paste & Scan** | Scans a screenshot from the clipboard and shows the names as clickable chips |
-| **✂️ Snip Player** | Reads the name under the mouse and opens/creates the player |
+| **✂️ Snip Player** | Press it and **drag a box over the player's name** on the table. The name is read from the marked area: a player that is in the database is opened and gets a box right there, an unknown name opens the create dialog with the reading filled in (so a name the OCR missed can be added by hand). The mark does **not** have to be exact — each line of text inside it is read on its own and the name wins over the stack size under it; a mark that gives nothing is retried around its middle. The box that is placed is the size of the **name that was read**, not of the mark (a mark is usually much bigger than the name). A plain click without dragging reads the name plate under the cursor. Esc or a right click cancels |
+
+**How a name is read (why the hard names are found).** A name plate is light text on a dark plate — the
+opposite polarity to what the OCR files were trained on — so every plate is read twice: as it is and as
+its *negative*, and the better reading wins. That is what turns `» §i§—t§i1_u imlan` into `Sistahumlan`
+(confidence 90). The plate is also cropped **tightly**, because the row right under a name holds the
+stack size and a crop that catches it reads nonsense instead of the name. On top of that:
+
+* readings that are amounts (`151.7 BB`, `213 BB`, `100 BB`) or client chrome (`Total pot 1`, `Hand …`)
+  are never taken for a name — they used to become grey boxes under a name;
+* `beeb` no longer wins over `beeboop`: the plate reading corrects a word pass box already when it is
+  three points better;
+* a long name may be read with one letter too few/many and still match the player in the database, but a
+  **different digit never matches** (`madmax789` is not `madmax717`);
+* a small crop that would make the native OCR build abort the whole process is skipped instead.
 
 **How the boxes avoid disturbing the game or your typing** (this was exactly where the old
 tracker stole focus):
@@ -65,7 +82,18 @@ tracker stole focus):
   hover), so normal clicks and keystrokes are untouched.
 
 Name matching is tolerant (OCR homoglyphs: `1/l/i`, `0/o`, `5/s`, `8/b`, `3/e` plus Levenshtein
-distance), so `ug7z` matches `U87` and `ninja tin` matches `ninjatin`.
+distance), so `ug7z` matches `U87` and `ninja tin` matches `ninjatin`. Names that only *look* alike
+are never swapped:
+
+* The **exact** name always wins, so `JimSteel` is never read as `JimSteele`.
+* When two players in the database fit a reading equally well (or when a trailing character is the
+  only difference and *both* names exist), the reading is left unknown: the box stays grey with the
+  reading instead of showing someone else's notes.
+* A reading that resembles exactly one player is kept as a grey box (not silently dropped), and the
+  note editor then says `'X' in the database looks almost the same` — correct the name and the note
+  lands on that player instead of creating a duplicate.
+* A scan that finds nothing at all keeps the boxes from the last scan, so a covered or just resized
+  table does not make the notes disappear; 🧹 Clear removes them for good.
 
 ---
 ## 🏷 Tags and colours
@@ -222,7 +250,7 @@ see the result without clicking:
 
 | Switch | Checks |
 | :--- | :--- |
-| `--selftest-ocr` | That the OCR and OpenCV engines start in the released build |
+| `--selftest-ocr` | That the OCR and OpenCV engines start in the released build, plus the reading rules: which readings are amounts or client chrome (never a name), which readings still match a database player (one letter may differ, never a digit), and that a marked area with the name **and** the stack under it reads the name |
 | `--selftest-note` | That the note editor can be built, shown, rendered and saved (presses "Save" programmatically) |
 | `--selftest-ui` | That the main window can be built and rendered (`ui_main_window.png`) |
 | `--selftest-overlay` | That the hover boxes are drawn with tag colours and names (`selftest_hover_overlay.png`) |

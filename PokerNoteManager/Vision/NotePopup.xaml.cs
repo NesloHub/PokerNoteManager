@@ -1,10 +1,13 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Runtime.InteropServices;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Input;
+using System.Windows.Interop;
 using System.Windows.Media;
+using System.Windows.Threading;
 
 namespace PokerNoteManager.Vision
 {
@@ -25,11 +28,29 @@ namespace PokerNoteManager.Vision
         private readonly Dictionary<string, bool> _selected = new(StringComparer.OrdinalIgnoreCase);
         private readonly HashSet<string> _initialTags = new(StringComparer.OrdinalIgnoreCase);
 
-        private readonly string _initialName;
-        private readonly string _initialNote;
+        private string _initialName;
+        private string _initialNote;
         private readonly int _physX, _physY;      // where the box was clicked, in physical screen pixels
         private bool _activated;
         private bool _closing;               // guards against Close() being re-entered while closing
+
+        /// <summary>When the editor was built - see <see cref="OpenGraceMs"/>.</summary>
+        private readonly long _openedTicks = Environment.TickCount64;
+        private DispatcherTimer? _focusTimer;
+        private int _focusAttempts;
+
+        /// <summary>
+        /// A click on a hover box reaches the poker client *and* opens this editor, and the activation
+        /// that the client gets in the same click would deactivate (and close) the brand new editor
+        /// again. Deactivations inside this grace period are therefore ignored, which is what makes the
+        /// editor appear on the *first* click - on a nine table set that is the whole difference.
+        /// </summary>
+        private const int OpenGraceMs = 600;
+
+        /// <summary>The editor claims the keyboard again a few times after opening, because Windows does
+        /// not always let the process that owns the click take the foreground. About 600 ms, the same
+        /// window as the grace period above.</summary>
+        private const int FocusAttempts = 5;
 
         /// <param name="known">True when the player is already in the database.</param>
         /// <param name="playerName">Database key, or the reading from the screen for a new player.</param>
@@ -40,10 +61,12 @@ namespace PokerNoteManager.Vision
         /// <param name="openInMain">Called when "Open in program" is pressed.</param>
         /// <param name="physX">X of the clicked box in physical screen pixels (for placement).</param>
         /// <param name="physY">Y of the clicked box in physical screen pixels (for placement).</param>
+        /// <param name="similarName">Database player the reading looks like, when the reading was not
+        /// matched (so a near miss does not silently create a duplicate). "" when there is none.</param>
         public NotePopup(bool known, string playerName, string note, IReadOnlyList<TagDef> allTags,
                          IReadOnlyList<string> playerTags,
                          Action<string, List<string>, string> onSave, Action openInMain,
-                         int physX = -1, int physY = -1)
+                         int physX = -1, int physY = -1, string similarName = "")
         {
             InitializeComponent();
 
@@ -58,8 +81,10 @@ namespace PokerNoteManager.Vision
             NameBox.Text = playerName ?? "";
             NameBox.IsReadOnly = known;
             NameHint.Visibility = known ? Visibility.Collapsed : Visibility.Visible;
-            NameHint.Text = "The name comes from the screen - correct it if the reading is off. "
-                          + "Saving creates the player.";
+            NameHint.Text = string.IsNullOrWhiteSpace(similarName)
+                ? "The name comes from the screen - correct it if the reading is off. Saving creates the player."
+                : "'" + similarName.Trim() + "' in the database looks almost the same. Correct the name "
+                  + "above to write on that player, or save as it is to create a new one.";
             NoteBox.Text = _initialNote;
 
             foreach (string tag in playerTags ?? Array.Empty<string>())
@@ -145,37 +170,132 @@ namespace PokerNoteManager.Vision
 
         private void OnLoaded(object sender, RoutedEventArgs e)
         {
-            // Place the popup next to the clicked box and keep it inside the screen that the box is on.
-            // The conversion from physical pixels to WPF units uses *this* window's DPI, which is the
-            // DPI of the monitor the popup ended up on - the two can differ with several monitors.
+            Place(_physX, _physY);
+
+            BringToFront();
+            FocusEditor();
+            StartFocusRetry();
+        }
+
+        /// <summary>
+        /// Puts the editor next to the clicked box, in physical pixels, clamped to the work area of the
+        /// monitor the click was on. WPF's own Left/Top are in device independent units of whichever
+        /// monitor the window starts on, which on a multi monitor setup with different DPI easily puts the
+        /// editor off screen - one of the reasons it looked like it "did not open".
+        /// </summary>
+        private void Place(int physX, int physY)
+        {
+            if (physX < 0 || physY < 0) return;          // no click position: leave WPF's placement alone
             try
             {
+                IntPtr hwnd = new WindowInteropHelper(this).Handle;
+                if (hwnd == IntPtr.Zero) return;
+
+                var work = ScreenCapture.WorkAreaForPoint(physX, physY);
+                if (work.Width <= 0 || work.Height <= 0) return;
+
                 double scale = VisualTreeHelper.GetDpi(this).DpiScaleX;
                 if (scale <= 0.1) scale = 1.0;
+                int width = (int)Math.Ceiling((ActualWidth > 0 ? ActualWidth : Width) * scale);
+                int height = (int)Math.Ceiling((ActualHeight > 0 ? ActualHeight : 220) * scale);
 
-                double width = ActualWidth > 0 ? ActualWidth : Width;
-                double height = ActualHeight > 0 ? ActualHeight : 260;
-                double vsLeft = SystemParameters.VirtualScreenLeft;
-                double vsTop = SystemParameters.VirtualScreenTop;
-                double vsWidth = Math.Max(320, SystemParameters.VirtualScreenWidth);
-                double vsHeight = Math.Max(240, SystemParameters.VirtualScreenHeight);
+                const int margin = 10;
+                int x = physX + 18;
+                int y = physY - 10;
+                if (x + width > work.Right - margin) x = physX - width - 18;        // no room on the right
+                if (y + height > work.Bottom - margin) y = physY - height + 10;     // no room below
+                x = Math.Clamp(x, work.X + margin, Math.Max(work.X + margin, work.Right - width - margin));
+                y = Math.Clamp(y, work.Y + margin, Math.Max(work.Y + margin, work.Bottom - height - margin));
 
-                if (_physX >= 0 && _physY >= 0)
+                SetWindowPos(hwnd, HWND_TOPMOST, x, y, 0, 0, SWP_NOSIZE | SWP_NOACTIVATE | SWP_SHOWWINDOW);
+                PvLog.Throttled("PopupPlace", $"[POPUP] placed at {x},{y} ({width}x{height}) - click {physX},{physY} " +
+                                             $"on work area {work.X},{work.Y} {work.Width}x{work.Height}", 15);
+            }
+            catch (Exception ex) { PvLog.Error("NotePopup.Place", ex); }
+        }
+
+        /// <summary>True while the editor is on screen and not on its way out.</summary>
+        public bool IsUsable => IsLoaded && !_closing;
+
+        /// <summary>
+        /// Brings the editor to the front *and* gives it the keyboard. Windows only lets the process
+        /// that owns the last input take the foreground, and the click that opened this editor belongs
+        /// to the poker client, so the foreground window's input queue is attached for the call. That is
+        /// what makes the editor ready to type in on the very first click.
+        /// </summary>
+        public void BringToFront()
+        {
+            try
+            {
+                if (IsLoaded)
                 {
-                    Left = _physX / scale + 14;
-                    Top = _physY / scale - 10;
+                    IntPtr hwnd = new WindowInteropHelper(this).Handle;
+                    IntPtr foreground = GetForegroundWindow();
+                    uint other = foreground == IntPtr.Zero ? 0 : GetWindowThreadProcessId(foreground, out _);
+                    uint mine = GetCurrentThreadId();
+                    bool attached = other != 0 && other != mine && AttachThreadInput(other, mine, true);
+                    try { SetForegroundWindow(hwnd); }
+                    finally { if (attached) AttachThreadInput(other, mine, false); }
+                    Topmost = true;      // the hover boxes are topmost too: stay above the table
                 }
 
-                double minLeft = vsLeft + 4, minTop = vsTop + 4;
-                Left = Math.Clamp(double.IsNaN(Left) ? minLeft : Left, minLeft, Math.Max(minLeft, vsLeft + vsWidth - width - 8));
-                Top = Math.Clamp(double.IsNaN(Top) ? minTop : Top, minTop, Math.Max(minTop, vsTop + vsHeight - height - 8));
+                Activate();
+                if (IsActive) FocusEditor();
             }
-            catch (Exception ex) { PvLog.Error("NotePopup.Position", ex); }
+            catch (Exception ex) { PvLog.Error("NotePopup.BringToFront", ex); }
+        }
 
-            Activate();
+        /// <summary>Puts the caret in the box the user wants first.</summary>
+        private void FocusEditor()
+        {
             if (NameBox.IsReadOnly) { NoteBox.Focus(); NoteBox.CaretIndex = NoteBox.Text.Length; }
             else { NameBox.Focus(); NameBox.SelectAll(); }
         }
+
+        /// <summary>
+        /// Repeats the attempt to take the keyboard for a short while: the poker client takes the
+        /// foreground from the click that opened the editor, so one attempt is not enough.
+        /// </summary>
+        private void StartFocusRetry()
+        {
+            if (_focusTimer == null)
+            {
+                _focusTimer = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(120) };
+                _focusTimer.Tick += FocusRetryTick;
+            }
+
+            _focusAttempts = 0;
+            _focusTimer.Start();
+        }
+
+        private void FocusRetryTick(object? sender, EventArgs e)
+        {
+            if (_closing || !IsLoaded || IsActive || ++_focusAttempts > FocusAttempts)
+            {
+                _focusTimer?.Stop();
+                if (IsActive) FocusEditor();
+                return;
+            }
+
+            // A move to a monitor with another DPI makes WPF re-place the window (WM_DPICHANGED), so the
+            // position is set again while the editor is still fighting for the keyboard.
+            Place(_physX, _physY);
+            BringToFront();
+        }
+
+        [DllImport("user32.dll")] private static extern IntPtr GetForegroundWindow();
+        [DllImport("user32.dll")] private static extern bool SetForegroundWindow(IntPtr hwnd);
+        [DllImport("user32.dll")] private static extern uint GetWindowThreadProcessId(IntPtr hwnd, out uint processId);
+        [DllImport("user32.dll")] private static extern bool AttachThreadInput(uint idAttach, uint idAttachTo, bool fAttach);
+        [DllImport("user32.dll")] private static extern bool SetWindowPos(IntPtr hwnd, IntPtr after, int x, int y, int w, int h, uint flags);
+        [DllImport("kernel32.dll")] private static extern uint GetCurrentThreadId();
+
+        private static readonly IntPtr HWND_TOPMOST = new(-1);
+        private static readonly IntPtr HWND_NOTOPMOST = new(-2);
+        private const uint SWP_NOSIZE = 0x0001;
+        private const uint SWP_NOMOVE = 0x0002;
+        private const uint SWP_NOACTIVATE = 0x0010;
+        private const uint SWP_SHOWWINDOW = 0x0040;
 
         protected override void OnActivated(EventArgs e)
         {
@@ -194,6 +314,12 @@ namespace PokerNoteManager.Vision
         {
             base.OnDeactivated(e);
             if (_closing || !_activated || !IsLoaded) return;
+
+            // The click that opened the editor makes the poker client the foreground window a moment
+            // later, and that deactivation must not close the brand new editor - it would need a second
+            // click, which is exactly what made it feel broken on a nine table set.
+            if (Environment.TickCount64 - _openedTicks < OpenGraceMs) return;
+
             if (!HasChanges()) CloseSafely();
         }
 
@@ -201,25 +327,58 @@ namespace PokerNoteManager.Vision
         public bool HasUnsavedChanges => !_closing && HasChanges();
 
         /// <summary>
-        /// Saves right away, exactly like pressing the Save button. Used when the editor is replaced by
-        /// another one (the same player sits at several tables, so a second box may be clicked).
+        /// Saves right away, exactly like pressing the Save button, and then treats the current text as
+        /// the saved state. Used when the editor is replaced by another one (the same player sits at
+        /// several tables, so a second box may be clicked) - without that the replaced editor stayed
+        /// "dirty" forever and would not close itself, so stale editors piled up on top of the table.
         /// </summary>
-        public void SaveNow() => Save();
+        public void SaveNow()
+        {
+            Save();
+            MarkSaved();
+        }
+
+        /// <summary>Remembers what is in the editor now as the saved state (so it is not dirty any more).</summary>
+        private void MarkSaved()
+        {
+            _initialName = (NameBox.Text ?? "").Trim();
+            _initialNote = NoteBox.Text ?? "";
+            _initialTags.Clear();
+            foreach (string tag in SelectedTags()) _initialTags.Add(tag);
+        }
 
         /// <summary>
         /// Closes the popup once, from any code path. Public so the main window can close it without
         /// ever hitting WPF's "while a Window is closing" InvalidOperationException.
         /// </summary>
-        public void CloseSafely()
+        public void CloseSafely() => CloseSafely("closed");
+
+        /// <summary>Same, but the reason ends up in the log so the next report can be traced.</summary>
+        public void CloseSafely(string reason)
         {
             if (_closing) return;
             _closing = true;
+            _focusTimer?.Stop();
             try
             {
                 if (IsLoaded) Close();
                 else Hide();
             }
-            catch (Exception ex) { PvLog.Error("NotePopup.CloseSafely", ex); }
+            catch (Exception ex)
+            {
+                // "Cannot set Visibility ... while a Window is closing": WPF was already closing this
+                // window (program shutdown, Alt+F4). Closing again is impossible, so the window is at
+                // least pushed behind the table instead of floating on top of it forever.
+                PvLog.Error("NotePopup.CloseSafely (" + reason + ")", ex);
+                try
+                {
+                    IntPtr hwnd = new WindowInteropHelper(this).Handle;
+                    if (hwnd != IntPtr.Zero) SetWindowPos(hwnd, HWND_NOTOPMOST, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE);
+                }
+                catch { }
+            }
+
+            PvLog.Throttled("PopupClose", $"[POPUP] editor closed ({reason})", 10);
         }
 
         private bool HasChanges()

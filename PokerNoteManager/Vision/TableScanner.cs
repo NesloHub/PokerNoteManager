@@ -163,13 +163,110 @@ namespace PokerNoteManager.Vision
         }
 
         /// <summary>
-        /// Reads every player name plate on one captured table. One OCR pass over the whole window:
-        /// words are then filtered by the felt relative zones measured on real screenshots, so the
-        /// pot, the board strip and the table logo can never be mistaken for a player.
-        /// When the table has no green felt (some client themes are grey/white), a window relative
-        /// zone plus the "light text on a dark plate" test is used instead.
+        /// Reads every player name plate on one captured table.
+        ///
+        /// Three steps are combined, which is why a scan takes a little longer than before (that is fine,
+        /// accuracy matters more):
+        ///   1. the word pass over the whole window (proven on real tables) finds the text lines, and the
+        ///      felt relative zones keep the pot, the board, the logo, chips and avatars out;
+        ///   2. every word that was found is read *again* on its own and upscaled - that reading is usually
+        ///      better than the one from the whole window, and it wins whenever it is not worse;
+        ///   3. name plates the word pass did not see at all (a name it never recognised as a word) are
+        ///      added afterwards.
         /// </summary>
         public static List<SeatBox> DetectSeats(Mat bgr, Rect? felt, TesseractEngine engine, string tableTitle)
+        {
+            // 1) the word pass: it finds the text lines, even when a single word is read badly
+            List<SeatBox> seats = ReadWordsInWindow(bgr, felt, engine, tableTitle);
+
+            // 2) the plate pass: it knows where the name plates are, reads each one on its own and fills in
+            //    the plates the word pass did not see. Where both passes describe the same plate, the better
+            //    reading wins and the wider (plate) rectangle is kept - the word box is often only part of
+            //    the name, which used to make a name come out as "teel" instead of "JimSteele".
+            foreach (SeatBox plate in ReadNamePlates(bgr, felt, engine, tableTitle))
+            {
+                SeatBox? twin = seats.FirstOrDefault(s => Overlaps(s.ScreenRect, plate.ScreenRect));
+                if (twin == null)
+                {
+                    seats.Add(plate);
+                    continue;
+                }
+
+                // The plate pass reads the name line itself, so a reading that is a bit better wins too
+                // (a merged word pass box can be read as "beeb" where the plate gives "beeboop").
+                if (plate.Confidence > twin.Confidence + 3)
+                {
+                    PvLog.Throttled("PlateWins:" + plate.ScreenRect.X + "x" + plate.ScreenRect.Y,
+                        $"[OCR] '{twin.OcrText}' (conf {twin.Confidence:0}) -> '{plate.OcrText}' " +
+                        $"(conf {plate.Confidence:0}) from the name plate", 60);
+                    twin.OcrText = plate.OcrText;
+                    twin.Confidence = plate.Confidence;
+                }
+
+                if (plate.ScreenRect.Width > twin.ScreenRect.Width) twin.ScreenRect = plate.ScreenRect;
+            }
+
+            return seats;
+        }
+
+        /// <summary>
+        /// True when two boxes cover (roughly) the same piece of the table: the word pass and the plate pass
+        /// describe the same name plate with slightly different rectangles, and those must not become two
+        /// boxes for one player.
+        /// </summary>
+        private static bool Overlaps(Rect a, Rect b)
+        {
+            int x0 = Math.Max(a.X, b.X), y0 = Math.Max(a.Y, b.Y);
+            int x1 = Math.Min(a.Right, b.Right), y1 = Math.Min(a.Bottom, b.Bottom);
+            if (x1 <= x0 || y1 <= y0) return false;
+
+            double inter = (x1 - x0) * (double)(y1 - y0);
+            double union = a.Width * (double)a.Height + b.Width * (double)b.Height - inter;
+            if (union > 0 && inter / union > 0.2) return true;
+
+            return Contains(a, b) || Contains(b, a);
+        }
+
+        /// <summary>True when the centre of <paramref name="inner"/> lies inside <paramref name="outer"/>.</summary>
+        private static bool Contains(Rect outer, Rect inner)
+        {
+            double cx = inner.X + inner.Width / 2.0, cy = inner.Y + inner.Height / 2.0;
+            return cx >= outer.X && cx <= outer.Right && cy >= outer.Y && cy <= outer.Bottom;
+        }
+
+        /// <summary>The accurate pass: every candidate name plate is read on its own.</summary>
+        private static List<SeatBox> ReadNamePlates(Mat bgr, Rect? felt, TesseractEngine engine, string tableTitle)
+        {
+            List<SeatBox> seats = new();
+            try
+            {
+                foreach (Rect plate in FindNamePlates(bgr, felt))
+                {
+                    string text = TryReadPlate(bgr, plate, engine, out float confidence);
+                    if (text.Length == 0) continue;
+
+                    seats.Add(new SeatBox
+                    {
+                        TableTitle = tableTitle,
+                        OcrText = text,
+                        Confidence = confidence,
+                        ScreenRect = new Rect(Math.Max(0, plate.X - 4), Math.Max(0, plate.Y - 3),
+                                              plate.Width + 8, plate.Height + 6)
+                    });
+                }
+            }
+            catch (Exception ex)
+            {
+                PvLog.Error("TableScanner.ReadNamePlates", ex);
+            }
+            return seats;
+        }
+
+        /// <summary>
+        /// The fallback pass: one OCR over the whole window, words filtered by the felt relative zones.
+        /// Used only when no name plate could be found at all.
+        /// </summary>
+        private static List<SeatBox> ReadWordsInWindow(Mat bgr, Rect? felt, TesseractEngine engine, string tableTitle)
         {
             List<SeatBox> seats = new();
             try
@@ -200,25 +297,197 @@ namespace PokerNoteManager.Vision
                         Rect box = new((int)(tr.X1 * inv), (int)(tr.Y1 * inv),
                                        Math.Max(1, (int)((tr.X2 - tr.X1) * inv)), Math.Max(1, (int)((tr.Y2 - tr.Y1) * inv)));
                         if (!LooksLikeName(text)) continue;
-                        if (box.Height < bgr.Height * 0.012 || box.Width > bgr.Width * 0.30) continue;
+                        if (box.Height < bgr.Height * 0.012 || box.Height > bgr.Height * 0.06) continue;
+                        if (box.Width > bgr.Width * 0.30) continue;
                         bool inSeat = felt.HasValue ? IsSeatRing(box, felt.Value, bgr) : IsWindowRing(box, bgr);
                         if (!inSeat) continue;
-                        if (!IsOnDarkPlate(bgr, box)) continue;      // name plates are light text on a dark plate
+                        if (!IsOnDarkPlate(bgr, box)) continue;
                         words.Add(new Word { Text = Clean(text), Conf = conf, Box = box });
                     }
                     while (it.Next(PageIteratorLevel.Word));
                 }
 
-                foreach (SeatBox seat in MergeWords(words, bgr.Width, tableTitle))
+                foreach (SeatBox seat in MergeWords(words, bgr.Width, bgr.Height, tableTitle))
                     seats.Add(seat);
-
-                return seats;
             }
             catch (Exception ex)
             {
-                PvLog.Error("TableScanner.DetectSeats", ex);
-                return seats;
+                PvLog.Error("TableScanner.ReadWordsInWindow", ex);
             }
+            return seats;
+        }
+
+        /// <summary>
+        /// The name plates on a table: light text on a dark plate, inside the seat ring (and never in the pot
+        /// band, the board strip or the middle of the felt). The text is thresholded and joined per line, so
+        /// every candidate is a *line of text* - chips, avatars and logos do not survive the plate test.
+        /// </summary>
+        private static List<Rect> FindNamePlates(Mat bgr, Rect? felt)
+        {
+            List<Rect> found = new();
+            try
+            {
+                using Mat gray = new();
+                Cv2.CvtColor(bgr, gray, ColorConversionCodes.BGR2GRAY);
+                using Mat bright = new();
+                Cv2.InRange(gray, Scalar.All(150), Scalar.All(255), bright);      // light name plate text
+
+                int join = Math.Max(7, bgr.Width / 260);                          // scales with the window
+                using Mat kernel = Cv2.GetStructuringElement(MorphShapes.Rect, new Size(join, 3));
+                using Mat joined = new();
+                Cv2.MorphologyEx(bright, joined, MorphTypes.Close, kernel);
+
+                Cv2.FindContours(joined, out Point[][] contours, out _,
+                    RetrievalModes.External, ContourApproximationModes.ApproxSimple);
+
+                foreach (Point[] c in contours)
+                {
+                    Rect r = Cv2.BoundingRect(c);
+                    if (r.Width < Math.Max(16, bgr.Width / 40)) continue;          // too short for a name
+                    if (r.Width > bgr.Width * 0.35) continue;
+                    if (r.Height < Math.Max(8, bgr.Height * 0.012) || r.Height > bgr.Height * 0.06) continue;
+
+                    bool inSeat = felt.HasValue ? IsSeatRing(r, felt.Value, bgr) : IsWindowRing(r, bgr);
+                    if (!inSeat) continue;
+                    if (!IsOnDarkPlate(bgr, r))
+                    {
+                        PvLog.Throttled("NoPlate:" + r.X + "x" + r.Y,
+                            $"[OCR] text at {r} skipped: no dark flat name plate", 120);
+                        continue;
+                    }
+                    found.Add(r);
+                }
+            }
+            catch (Exception ex)
+            {
+                PvLog.Error("TableScanner.FindNamePlates", ex);
+            }
+
+            return found.OrderByDescending(r => r.Width).Take(12).ToList();        // widest first: seat names
+        }
+
+        /// <summary>
+        /// Reads the best name-like text out of a set of crops of the same image: every crop is OCR'd and
+        /// the reading with the highest confidence wins. Which crop is best differs from window to window
+        /// (a tight crop around the glyphs is usually best, but a plate with an odd font can be read better
+        /// in one piece), so both are tried instead of guessing.
+        /// </summary>
+        private static string BestRead(Mat image, IReadOnlyList<Rect> crops, TesseractEngine engine, out float confidence,
+                                       float minConfidence = 0, float preferConfidence = 0, Action<Rect>? winner = null)
+        {
+            string best = "";
+            float bestConf = 0;
+            confidence = 0;
+
+            foreach (Rect crop in crops)
+            {
+                if (crop.Width < 8 || crop.Height < 6 || crop.Right > image.Width || crop.Bottom > image.Height) continue;
+
+                using Mat view = new(image, crop);
+
+                // A name plate is light text on a dark plate - the opposite of what the OCR files were
+                // trained on - so every crop is also read as its negative. That single extra attempt is
+                // what reads "Sistahumlan" (the plain reading of its plate is "» §i§—t§i1_u imlan", the
+                // negative one is the name with a confidence in the nineties).
+                List<Mat> variants = Variants(view);
+                try
+                {
+                    // The upscale factors: on the plates of real tables a moderate one (the glyphs end up
+                    // around 45 px tall) reads best, while a very small plate needs the large factor.
+                    double big = Math.Clamp(150.0 / Math.Max(1, crop.Height), 2.0, 8.0);
+                    double[] scales = big > 3.2 ? new[] { 3.0, big } : new[] { big };
+                    float enough = preferConfidence > 0 ? preferConfidence : 60f;
+
+                    void Attempt(Mat variant, double scale)
+                    {
+                        string text = ReadSingleLine(variant, engine, out float conf, scale);
+                        if (!LooksLikePlayerName(text) || conf < minConfidence) return;
+                        if (conf > bestConf)
+                        {
+                            best = text;
+                            bestConf = conf;
+                            winner?.Invoke(crop);      // the crop that won: the caller can box exactly that
+                        }
+                    }
+
+                    // 1) the plate as it is
+                    foreach (double scale in scales)
+                    {
+                        Attempt(variants[0], scale);
+                        if (bestConf >= enough) break;
+                    }
+
+                    // 2) only when that stayed weak: the negative. A name plate is light text on a dark
+                    //    plate, which is the polarity the OCR files were *not* trained on - and reading the
+                    //    negative is what turns "» §i§—t§i1_u imlan" into "Sistahumlan". No extra OCR pass
+                    //    is paid for the plates that already read well.
+                    if (bestConf < enough && variants.Count > 1)
+                    {
+                        foreach (double scale in scales)
+                        {
+                            Attempt(variants[1], scale);
+                            if (bestConf >= enough) break;
+                        }
+                    }
+                }
+                finally
+                {
+                    foreach (Mat extra in variants.Skip(1)) extra.Dispose();
+                }
+
+                if (preferConfidence > 0 && bestConf >= preferConfidence) break;
+            }
+
+            confidence = bestConf;
+            return best;
+        }
+
+        /// <summary>
+        /// The images one crop is read as: the crop itself and its negative. Both have to be disposed by
+        /// the caller - the first entry is the given matrix, which the caller owns.
+        /// </summary>
+        private static List<Mat> Variants(Mat bgr)
+        {
+            List<Mat> variants = new() { bgr };
+            try
+            {
+                using Mat gray = new();
+                if (bgr.Channels() == 3) Cv2.CvtColor(bgr, gray, ColorConversionCodes.BGR2GRAY);
+                else bgr.CopyTo(gray);
+
+                using Mat negative = new();
+                Cv2.BitwiseNot(gray, negative);
+
+                Mat asBgr = new();
+                Cv2.CvtColor(negative, asBgr, ColorConversionCodes.GRAY2BGR);
+                variants.Add(asBgr);
+            }
+            catch (Exception ex)
+            {
+                PvLog.Error("TableScanner.Variants", ex);
+            }
+            return variants;
+        }
+
+        /// <summary>
+        /// Reads one name plate and returns the text ("" when nothing name-like could be read). Three crops are
+        /// tried: tight around the glyphs (the row below the name - the stack size - is what turns the reading
+        /// into nonsense, so the tight crop is the most important one), a little wider, and a bit wider still.
+        /// </summary>
+        private static string TryReadPlate(Mat bgr, Rect plate, TesseractEngine engine, out float confidence)
+        {
+            List<Rect> crops = new()
+            {
+                Pad(plate, bgr.Size(), 2, 2),
+                Pad(plate, bgr.Size(), 5, 4),
+                Pad(plate, bgr.Size(), 9, 7)
+            };
+
+            string best = BestRead(bgr, crops, engine, out confidence, 0, 65);
+            if (best.Length > 0)
+                PvLog.Throttled("Plate:" + plate.X + "x" + plate.Y,
+                    $"[OCR] plate {plate} -> '{best}' (conf {confidence:0})", 120);
+            return best;
         }
 
         /// <summary>
@@ -281,15 +550,18 @@ namespace PokerNoteManager.Vision
             new string(text.Where(c => char.IsLetterOrDigit(c) || c == ' ' || c == '_' || c == '-' || c == '.').ToArray()).Trim();
 
         /// <summary>
-        /// Name plates are light text on a dark plate. Text in the window chrome (title bar, tab bar)
-        /// sits on a light background, so the ring around the box decides which one it is.
+        /// Name plates are light text on a dark, flat plate. Text in the window chrome (title bar,
+        /// tab bar) sits on a light background and fails here, and so does anything that is not a plate
+        /// at all: an avatar photo with glasses that the OCR reads as letters ("C0ol") has a busy,
+        /// colourful surround and its glyphs do not sit on one plate colour, so it is rejected.
         /// </summary>
         private static bool IsOnDarkPlate(Mat bgr, Rect box)
         {
             try
             {
-                int padX = Math.Max(4, box.Width / 3);
-                int padY = Math.Max(3, box.Height / 2);
+                // The ring is kept tight around the glyphs so it stays on the plate itself.
+                int padX = Math.Max(3, box.Width / 4);
+                int padY = Math.Max(2, box.Height / 3);
                 int x0 = Math.Max(0, box.X - padX), y0 = Math.Max(0, box.Y - padY);
                 int x1 = Math.Min(bgr.Width, box.Right + padX), y1 = Math.Min(bgr.Height, box.Bottom + padY);
                 if (x1 - x0 < 6 || y1 - y0 < 4) return true;
@@ -297,17 +569,38 @@ namespace PokerNoteManager.Vision
                 using Mat roi = new(bgr, new Rect(x0, y0, x1 - x0, y1 - y0));
                 using Mat gray = new();
                 Cv2.CvtColor(roi, gray, ColorConversionCodes.BGR2GRAY);
+                Rect glyphs = new(box.X - x0, box.Y - y0, box.Width, box.Height);
 
-                // mean of the whole patch and of the ring (patch minus the text box itself)
-                Scalar meanAll = Cv2.Mean(gray);
-                using Mat ring = new(gray, new Rect(0, 0, gray.Width, gray.Height));
-                Cv2.Rectangle(ring, new Rect(box.X - x0, box.Y - y0, box.Width, box.Height), Scalar.All(0), -1);
-                Scalar meanRing = Cv2.Mean(ring);
-                int textPixels = Cv2.CountNonZero(gray);
-                if (textPixels == 0) return false;
+                // ring = the patch without the glyph box, i.e. the plate around the text.
+                using Mat ringMask = new(gray.Size(), MatType.CV_8UC1, Scalar.All(255));
+                Cv2.Rectangle(ringMask, glyphs, Scalar.All(0), -1);
+                int ringPixels = Cv2.CountNonZero(ringMask);
+                if (ringPixels == 0) return false;
 
-                // dark plate: the ring must be clearly darker than the glyphs
-                return meanRing.Val0 < 140 && meanRing.Val0 < meanAll.Val0 + 40;
+                // A name plate is dark and flat. A photo is neither, which is exactly what tells an
+                // avatar apart from a name plate ("C0ol" read off an avatar with glasses).
+                using Mat dark = new();
+                Cv2.InRange(gray, Scalar.All(0), Scalar.All(170), dark);
+                using Mat darkRing = new();
+                Cv2.BitwiseAnd(dark, ringMask, darkRing);
+                double darkShare = Cv2.CountNonZero(darkRing) / (double)ringPixels;
+
+                Cv2.MeanStdDev(gray, out Scalar ringMean, out Scalar ringStd, ringMask);
+                double plate = ringMean.Val0;
+                if (plate >= 150 || darkShare < 0.75 || ringStd.Val0 > 42) return false;
+
+                // The glyphs must sit *on* that plate colour with the background still showing between
+                // them: a photo or a logo covers its box with pixels that are not the plate colour.
+                using Mat boxMask = new(gray.Size(), MatType.CV_8UC1, Scalar.All(0));
+                Cv2.Rectangle(boxMask, glyphs, Scalar.All(255), -1);
+                int boxPixels = Cv2.CountNonZero(boxMask);
+                if (boxPixels == 0) return false;
+
+                using Mat plateBand = new();
+                Cv2.InRange(gray, Scalar.All(Math.Max(0, plate - 32)), Scalar.All(Math.Min(255, plate + 32)), plateBand);
+                using Mat onPlate = new();
+                Cv2.BitwiseAnd(plateBand, boxMask, onPlate);
+                return Cv2.CountNonZero(onPlate) / (double)boxPixels >= 0.45;
             }
             catch (Exception ex)
             {
@@ -327,12 +620,40 @@ namespace PokerNoteManager.Vision
             if (letters == 0) return false;
             if (digits > letters + 2) return false;                  // "1.00", "12,345" style amounts
             if (t.Contains('.') && digits >= 1) return false;        // stack/bet values
+            if (digits > 0 && letters <= 2 && LooksLikeAmount(t)) return false;   // "213 BB", "2043BB", "1 BB"
+            // "Total pot 1.5", "Play carefully", "Hand 2435663790" - a reading whose every word is client
+            // chrome (numbers and lone punctuation count as chrome here, the pot and the hand id are numbers).
+            string[] words = t.Split(' ', StringSplitOptions.RemoveEmptyEntries);
+            if (words.Length > 0 && words.All(w => StopWords.Contains(w) ||
+                                                    w.All(c => !char.IsLetterOrDigit(c)) ||
+                                                    w.All(char.IsDigit))) return false;
             if (t.Length <= 2 && !t.Any(c => c > 127) && letters < 2) return false;
             return true;
         }
 
+        /// <summary>
+        /// True when a reading is a number with an optional unit behind it ("151.7", "213 BB", "20bb", "5 K").
+        /// The stack and the bets are printed right under the name, so those readings have to be recognised
+        /// as amounts - they used to become grey boxes for the numbers under a name.
+        /// </summary>
+        private static bool LooksLikeAmount(string text)
+        {
+            int i = 0;
+            bool digit = false;
+            while (i < text.Length && (char.IsDigit(text[i]) || text[i] == '.' || text[i] == ',' || text[i] == ' '))
+            {
+                if (char.IsDigit(text[i])) digit = true;
+                i++;
+            }
+            if (!digit) return false;
+
+            string tail = text[i..].Trim().ToUpperInvariant();
+            return tail.Length == 0 || tail is "BB" or "B" or "K" or "KK" or "USD" or "EUR" or "SEK" or "NOK" or
+                   "DKK" or "$" or "€" or "£" or "KR";
+        }
+
         /// <summary>Joins words that sit on the same line: OCR often splits a name in two.</summary>
-        private static List<SeatBox> MergeWords(List<Word> words, int frameWidth, string tableTitle)
+        private static List<SeatBox> MergeWords(List<Word> words, int frameWidth, int frameHeight, string tableTitle)
         {
             List<SeatBox> result = new();
             if (words.Count == 0) return result;
@@ -373,6 +694,12 @@ namespace PokerNoteManager.Vision
                 Rect box = group[0].Box;
                 foreach (Word w in group.Skip(1)) box = box.Union(w.Box);
 
+                // A group that grew much taller than one text line is not a name plate (a bet chip and the
+                // dealer button next to the felt get merged into one blob, which then reads as "set"). The
+                // plate pass finds the real name plates on its own anyway.
+                if (box.Height > frameHeight * 0.06) continue;
+                if (box.Width > frameWidth * 0.30) continue;
+
                 result.Add(new SeatBox
                 {
                     TableTitle = tableTitle,
@@ -411,12 +738,41 @@ namespace PokerNoteManager.Vision
                    "Run PokerVisionHUD.exe --selftest-ocr to see exactly which path is missing.";
         }
 
-        /// <summary>Reads one line of text (used by "Snip Player"): upscaled, SingleLine OCR.</summary>
-        public static string ReadSingleLine(Mat bgr, TesseractEngine engine)
+        /// <summary>
+        /// Reads one line of text and reports Tesseract's own confidence for it (used by "Snip Player").
+        /// The crop is upscaled so the glyphs are around 150 px tall.
+        /// </summary>
+        public static string ReadSingleLine(Mat bgr, TesseractEngine engine, out float confidence) =>
+            ReadSingleLine(bgr, engine, out confidence, Math.Clamp(150.0 / Math.Max(1, bgr.Height), 2.0, 8.0));
+
+        /// <summary>
+        /// Reads one line of text with a caller chosen upscale factor. Which factor reads a name plate best
+        /// differs per window (a very large upscale blurs small glyphs into mush for one font and is exactly
+        /// what another one needs), so the callers try a couple of factors and keep the best reading.
+        /// </summary>
+        public static string ReadSingleLine(Mat bgr, TesseractEngine engine, out float confidence, double scale)
         {
+            confidence = 0;
             try
             {
-                double scale = Math.Clamp(90.0 / Math.Max(1, bgr.Height), 1.5, 6.0);
+                // A crop of a pixel or two makes the native Tesseract build abort the whole process
+                // (leptonica: "Image too small to scale"), so nothing that small is handed to it.
+                if (bgr == null || bgr.Empty() || bgr.Width < 6 || bgr.Height < 6)
+                {
+                    PvLog.Throttled("TinyCrop", $"[OCR] skipped a {bgr?.Width ?? 0}x{bgr?.Height ?? 0} crop", 60);
+                    return "";
+                }
+
+                scale = Math.Clamp(scale, 1.2, 9.0);
+
+                // A crop that is (nearly) one flat colour has nothing to read, and the native Tesseract
+                // build can abort the whole process on a degenerate text line in such an image
+                // (leptonica: "Image too small to scale"), so those are never handed over.
+                using Mat grayCheck = new();
+                Cv2.CvtColor(bgr, grayCheck, ColorConversionCodes.BGR2GRAY);
+                Cv2.MeanStdDev(grayCheck, out _, out Scalar spread);
+                if (spread.Val0 < 6) return "";
+
                 using Mat big = new();
                 Cv2.Resize(bgr, big, new Size(0, 0), scale, scale, InterpolationFlags.Cubic);
                 byte[] png;
@@ -426,6 +782,7 @@ namespace PokerNoteManager.Vision
                 {
                     using Pix pix = Pix.LoadFromMemory(png);
                     using Page page = engine.Process(pix, PageSegMode.SingleLine);
+                    confidence = page.GetMeanConfidence() * 100f;
                     return (page.GetText() ?? "").Replace("\n", " ").Trim();
                 }
             }
@@ -434,6 +791,235 @@ namespace PokerNoteManager.Vision
                 PvLog.Error("TableScanner.ReadSingleLine", ex);
                 return "";
             }
+        }
+
+        /// <summary>
+        /// The player name in a small patch around a point (used by "Snip Player"). Only a name plate
+        /// reading that really looks like a player name is accepted, which is what keeps a click on the
+        /// felt, a chip stack or an avatar from ending in "create the player '‘'".
+        /// </summary>
+        public static string ReadNameNear(Mat crop, int px, int py, TesseractEngine engine, out float confidence) =>
+            ReadNameNear(crop, px, py, engine, out confidence, out _);
+
+        /// <summary>
+        /// The same reading, plus the rectangle (inside <paramref name="crop"/>) that produced it, so a hover
+        /// box can be put exactly on the name that was read.
+        /// </summary>
+        public static string ReadNameNear(Mat crop, int px, int py, TesseractEngine engine, out float confidence,
+                                          out Rect namePlate)
+        {
+            confidence = 0;
+            namePlate = default;
+            if (crop == null || crop.Empty()) return "";
+
+            // The click is rarely exactly on the text row. The tight crop around the glyphs on the rows under
+            // the cursor is the best guess, followed by strips of the name line height around them.
+            List<Rect> crops = new();
+            Rect found = default;
+            int half = Math.Clamp(crop.Height / 4, 14, 30);
+            foreach (int offset in new[] { 0, -13, 13 })
+            {
+                int y = py + offset;
+                if (y < 0 || y >= crop.Height) continue;
+
+                if (FindTextLine(crop, px, y, out Rect strip) &&
+                    strip.X > 1 && strip.Right < crop.Width - 1 && strip.Y > 0 && strip.Bottom < crop.Height)
+                    crops.Add(Pad(strip, crop.Size(), 4, 4));
+            }
+
+            foreach (int offset in new[] { 0, -13, 13 })
+            {
+                int y0 = Math.Clamp(py + offset - half, 0, Math.Max(0, crop.Height - 2));
+                int y1 = Math.Clamp(y0 + half * 2, Math.Min(crop.Height, y0 + 8), crop.Height);
+                if (y1 - y0 >= 16) crops.Add(new Rect(0, y0, crop.Width, y1 - y0));
+            }
+
+            if (crops.Count == 0)
+            {
+                PvLog.Throttled("SnipNoText", "[SNIP] nothing to read under the cursor", 15);
+                return "";
+            }
+
+            // Only a reading that looks like a name *and* is confident enough is used: a strip through the
+            // middle of a name plate reads half letters ("ol T P"), and that must never become a player.
+            // Every band is read and the most confident name-like reading wins.
+            string best = BestRead(crop, crops, engine, out confidence, 50, 0, r => found = r);
+            namePlate = found;
+            if (best.Length == 0)
+            {
+                PvLog.Throttled("SnipNoName", "[SNIP] no player name under the cursor", 15);
+                return "";
+            }
+
+            PvLog.Throttled("SnipRead", $"[SNIP] cursor read -> '{best}' (conf {confidence:0})", 20);
+            return best;
+        }
+
+        /// <summary>
+        /// Reads the player name inside a marked area ("Snip Player" with a dragged rectangle).
+        ///
+        /// A mark is rarely exact: it usually covers the name and the stack below it, and on a light table it
+        /// can cover a good part of the felt as well. So the lines of text inside the mark are searched for
+        /// (each of them on its own - reading the name and the stack as one image gives nonsense), and the
+        /// plate backed line comes first. The mark itself is the last resort.
+        /// </summary>
+        public static string ReadNameIn(Mat crop, TesseractEngine engine, out float confidence) =>
+            ReadNameIn(crop, engine, out confidence, out _);
+
+        /// <summary>
+        /// The same reading, plus the rectangle (inside <paramref name="crop"/>) that produced it, so a hover
+        /// box can be put exactly on the name that was read instead of over the whole mark.
+        /// </summary>
+        public static string ReadNameIn(Mat crop, TesseractEngine engine, out float confidence, out Rect namePlate)
+        {
+            confidence = 0;
+            namePlate = default;
+            if (crop == null || crop.Empty()) return "";
+
+            List<Rect> crops = new();
+            Rect found = default;
+            foreach (Rect line in FindTextLines(crop)) crops.Add(Pad(line, crop.Size(), 2, 2));
+            crops.Add(new Rect(0, 0, crop.Width, crop.Height));
+
+            // No early stop: every line in the mark is read and the most confident name-like reading wins.
+            // Stopping at the first line that only *sounds* confident is what made a mark over the name and
+            // the stack below it read the stack ("02 2 RR" instead of "Rupshaw").
+            string best = BestRead(crop, crops, engine, out confidence, 25, 0, r => found = r);
+            namePlate = found;
+            if (best.Length == 0)
+            {
+                PvLog.Throttled("SnipUnreadable", "[SNIP] nothing name like in the marked area", 15);
+                return "";
+            }
+
+            PvLog.Throttled("SnipRead", $"[SNIP] marked area -> '{best}' (conf {confidence:0})", 20);
+            return best;
+        }
+
+        /// <summary>
+        /// The lines of light text in an image: each candidate on its own, the plate backed ones first and
+        /// within those the one nearest to the middle of the image first (the user marks or points at the name,
+        /// and the stack size is printed right under it), at most four. A bright area that fills a good part
+        /// of the image is not a line of text - on a light table theme the felt itself is bright, and it used
+        /// to be read as text.
+        /// </summary>
+        private static List<Rect> FindTextLines(Mat bgr)
+        {
+            List<Rect> plateLines = new();
+            List<Rect> otherLines = new();
+            try
+            {
+                double area = bgr.Width * (double)bgr.Height;
+                double cx = bgr.Width / 2.0, cy = bgr.Height / 2.0;
+                foreach (Rect r in BrightLineRects(bgr))
+                {
+                    if (!LooksLikeTextLine(r, area)) continue;                   // a bright patch, not a line
+                    if (IsOnDarkPlate(bgr, r)) plateLines.Add(r);
+                    else otherLines.Add(r);
+                }
+
+                double Distance(Rect r) =>
+                    Math.Abs(r.X + r.Width / 2.0 - cx) + Math.Abs(r.Y + r.Height / 2.0 - cy) - r.Width / 4.0;
+
+                plateLines.Sort((a, b) => Distance(a).CompareTo(Distance(b)));
+                otherLines.Sort((a, b) => Distance(a).CompareTo(Distance(b)));
+            }
+            catch (Exception ex)
+            {
+                PvLog.Error("TableScanner.FindTextLines", ex);
+            }
+
+            return plateLines.Concat(otherLines).Take(4).ToList();
+        }
+
+        /// <summary>
+        /// True when a bright rectangle is a line of text and not a bright patch of the table: the felt of some
+        /// themes is almost white, and a mark or the patch around the cursor can cover a lot of it. A line of
+        /// text is flat (much wider than tall) and never fills most of the image.
+        /// </summary>
+        private static bool LooksLikeTextLine(Rect r, double imageArea)
+        {
+            double share = r.Width * (double)r.Height / Math.Max(1.0, imageArea);
+            if (share > 0.6) return false;
+            return r.Width >= r.Height * 2.0 || share <= 0.25;
+        }
+
+        /// <summary>The rectangles of the light text in an image, filtered only by their shape.</summary>
+        private static List<Rect> BrightLineRects(Mat bgr)
+        {
+            List<Rect> found = new();
+            using Mat gray = new();
+            Cv2.CvtColor(bgr, gray, ColorConversionCodes.BGR2GRAY);
+            using Mat bright = new();
+            Cv2.InRange(gray, Scalar.All(150), Scalar.All(255), bright);     // light text on a dark plate
+            using Mat kernel = Cv2.GetStructuringElement(MorphShapes.Rect, new Size(9, 3));
+            using Mat joined = new();
+            Cv2.MorphologyEx(bright, joined, MorphTypes.Close, kernel);
+
+            Cv2.FindContours(joined, out Point[][] contours, out _,
+                RetrievalModes.External, ContourApproximationModes.ApproxSimple);
+
+            foreach (Point[] c in contours)
+            {
+                Rect r = Cv2.BoundingRect(c);
+                if (r.Height < 6 || r.Height > 46) continue;                     // a text line, not a shape
+                if (r.Width < 6 || r.Width > bgr.Width * 0.9) continue;
+                found.Add(r);
+            }
+            return found;
+        }
+
+        /// <summary>
+        /// The line of light text around a point, or the whole image when <paramref name="px"/>/<paramref name="py"/>
+        /// are negative. Returns false when there is nothing text like to read.
+        /// </summary>
+        private static bool FindTextLine(Mat bgr, int px, int py, out Rect strip)
+        {
+            strip = default;
+            bool nearPoint = px >= 0 && py >= 0;
+            try
+            {
+                double area = bgr.Width * (double)bgr.Height;
+                List<Rect> lines = new();
+                foreach (Rect r in BrightLineRects(bgr))
+                {
+                    // On a light table theme the felt is bright as well: a bright patch that covers a good
+                    // part of the crop is the background, not the text on it.
+                    if (!LooksLikeTextLine(r, area)) continue;
+                    if (nearPoint && (py < r.Y - 14 || py > r.Bottom + 14)) continue;   // not the row under the cursor
+                    if (nearPoint && (px < r.X - 80 || px > r.Right + 80)) continue;    // not the name next to it
+                    lines.Add(r);
+                }
+
+                if (lines.Count == 0) return false;
+
+                // Lines that really sit on a name plate describe the name; when there is none (a plate that is
+                // not dark, a window chrome row) the plain lines are used.
+                List<Rect> backed = lines.Where(r => IsOnDarkPlate(bgr, r)).ToList();
+                List<Rect> used = backed.Count > 0 ? backed : lines;
+
+                Rect box = used[0];
+                foreach (Rect r in used.Skip(1)) box = box.Union(r);
+
+                if (box.Width < 6 || box.Height < 6) return false;
+                strip = box;
+                return true;
+            }
+            catch (Exception ex)
+            {
+                PvLog.Error("TableScanner.FindTextLine", ex);
+                return false;
+            }
+        }
+
+        /// <summary>Grows a rectangle by a margin and keeps it inside the image.</summary>
+        private static Rect Pad(Rect rect, Size image, int marginX, int marginY)
+        {
+            int x = Math.Max(0, rect.X - marginX);
+            int y = Math.Max(0, rect.Y - marginY);
+            int right = Math.Min(image.Width, rect.Right + marginX);
+            int bottom = Math.Min(image.Height, rect.Bottom + marginY);
+            return new Rect(x, y, Math.Max(1, right - x), Math.Max(1, bottom - y));
         }
 
         // ================= name matching =================
@@ -455,25 +1041,136 @@ namespace PokerNoteManager.Vision
                         .Replace("rn", "m");
         }
 
-        /// <summary>Best matching database key for an OCR reading ("" when nothing is close enough).</summary>
+        /// <summary>
+        /// Best matching database key for an OCR reading ("" when nothing is close enough).
+        ///
+        /// Names that only look alike must never be swapped ("JimSteel" is not "JimSteele"), so the
+        /// match is resolved in steps and gives up whenever the reading is ambiguous:
+        ///   1. the same name ignoring case - a real player always beats a look-alike;
+        ///   2. a candidate inside the OCR tolerance, but only when it is the single best one;
+        ///   3. never when two players are equally close, and never when the only difference is a
+        ///      character more or less at the end ("JimSteel" vs a lone "JimSteele").
+        /// A grey box costs nothing; a note written on the wrong player does. Ambiguity is logged, so
+        /// the reason for a grey box can always be looked up.
+        /// </summary>
         public static (string Key, double Distance) MatchPlayer(string ocrText, Dictionary<string, string> normalizedKeys)
         {
-            string norm = NormalizeName(ocrText);
+            if (normalizedKeys == null || normalizedKeys.Count == 0) return ("", double.MaxValue);
+
+            string raw = (ocrText ?? "").Trim();
+            string norm = NormalizeName(raw);
             if (norm.Length < 3) return ("", double.MaxValue);
 
-            string bestKey = "";
+            // 1) the very same name (ignoring case)
+            foreach (KeyValuePair<string, string> kv in normalizedKeys)
+                if (string.Equals((kv.Key ?? "").Trim(), raw, StringComparison.OrdinalIgnoreCase))
+                    return (kv.Key ?? "", 0);
+
+            // 2) every player the OCR tolerance allows, keeping only the closest ones
             double best = double.MaxValue;
+            List<KeyValuePair<string, string>> winners = new();
             foreach (KeyValuePair<string, string> kv in normalizedKeys)
             {
-                if (kv.Value.Length < 3) continue;
-                if (kv.Value == norm) return (kv.Key, 0);
+                string candidate = kv.Value ?? "";
+                if (candidate.Length < 3) continue;
 
-                int allowed = Math.Max(1, kv.Value.Length / 6);
-                int d = Levenshtein(norm, kv.Value, allowed + 1);
+                // Long names get one edit more, because that is where a client font and a small plate cost
+                // letters ("Sistahumlan" read as "'Sig;ahumlan"). Digits are never tolerated: a name with
+                // other digits is a different player ("madmax789" is not "madmax717").
+                int allowed = Math.Max(1, candidate.Length / 6);
+                if (candidate.Length >= 10 && DigitsOf(candidate) == DigitsOf(norm)) allowed = 2;
+
+                int d = candidate == norm ? 0 : Levenshtein(norm, candidate, allowed + 1);
                 if (d > allowed) continue;
-                if (d < best) { best = d; bestKey = kv.Key; }
+
+                if (d < best) { best = d; winners.Clear(); winners.Add(kv); }
+                else if (d == best) winners.Add(kv);
             }
-            return (bestKey, best);
+
+            if (winners.Count == 0) return ("", double.MaxValue);
+
+            // 3) two players that look equally like the reading: never guess between them
+            if (winners.Count > 1)
+            {
+                PvLog.Throttled("MatchAmbiguous", $"[OCR] '{raw}' fits " +
+                    string.Join(" / ", winners.Select(w => w.Key)) + " equally well -> left unknown", 30);
+                return ("", double.MaxValue);
+            }
+
+            KeyValuePair<string, string> winner = winners[0];
+            // A character more or less at the end is what separates "JimSteel" from "JimSteele". When a
+            // *second* player in the database also fits the reading that way, the reading is not trusted -
+            // but a single name that is merely read with one character too few/many is still used, so a
+            // player who *is* in the database never disappears from the screen for that reason.
+            if (best > 0 && HasTrailingTwin(norm, winner.Value, normalizedKeys))
+            {
+                PvLog.Throttled("MatchNeighbour", $"[OCR] '{raw}' looks like '{winner.Key}' but one character " +
+                                                  "differs and a second player looks the same -> left unknown", 30);
+                return ("", double.MaxValue);
+            }
+
+            return (winner.Key, best);
+        }
+
+        /// <summary>The digits of a normalised name, used so a mismatch in digits is never tolerated.</summary>
+        private static string DigitsOf(string normalized) => new(normalized.Where(char.IsDigit).ToArray());
+
+        /// <summary>
+        /// True when the reading differs from <paramref name="winner"/> only at the end *and* another
+        /// player in the database fits the same reading the same way (the JimSteel/JimSteele case).
+        /// </summary>
+        private static bool HasTrailingTwin(string reading, string winner, Dictionary<string, string> normalizedKeys)
+        {
+            if (!reading.StartsWith(winner, StringComparison.Ordinal) &&
+                !winner.StartsWith(reading, StringComparison.Ordinal)) return false;
+
+            foreach (KeyValuePair<string, string> kv in normalizedKeys)
+            {
+                string other = kv.Value ?? "";
+                if (other.Length < 3 || other == winner) continue;
+                if (other.StartsWith(reading, StringComparison.Ordinal) ||
+                    reading.StartsWith(other, StringComparison.Ordinal)) return true;
+            }
+            return false;
+        }
+
+        /// <summary>
+        /// True when a reading can be used as a player name: at least three letters/digits with two
+        /// letters in them. Keeps "Snip Player" from offering to create a player out of whatever the
+        /// OCR found in a graphic (a "?" or a quote on a name plate).
+        /// </summary>
+        public static bool LooksLikePlayerName(string raw)
+        {
+            string t = Clean(raw);
+            if (!LooksLikeName(t)) return false;
+            return t.Count(char.IsLetter) >= 2 && NormalizeName(t).Length >= 3;
+        }
+
+        /// <summary>
+        /// The player a *rejected* reading resembles, for the hint in the note editor ("" when there is
+        /// none). Used so a name read one character off does not silently create a duplicate player.
+        /// </summary>
+        public static string FindSimilarName(string ocrText, Dictionary<string, string> normalizedKeys)
+        {
+            if (normalizedKeys == null || normalizedKeys.Count == 0) return "";
+
+            string norm = NormalizeName(ocrText);
+            if (norm.Length < 3) return "";
+
+            string bestKey = "";
+            int best = int.MaxValue;
+            bool tie = false;
+            foreach (KeyValuePair<string, string> kv in normalizedKeys)
+            {
+                string candidate = kv.Value ?? "";
+                if (candidate.Length < 3 || candidate == norm) continue;
+
+                int d = Levenshtein(norm, candidate, 3);
+                if (d > 2) continue;
+                if (d < best) { best = d; bestKey = kv.Key; tie = false; }
+                else if (d == best) tie = true;
+            }
+            return tie ? "" : bestKey;
         }
 
         private static int Levenshtein(string a, string b, int limit)

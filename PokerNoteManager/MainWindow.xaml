@@ -305,7 +305,11 @@
                     <Button x:Name="BtnPasteScan" Style="{StaticResource Btn}" Content="📋  Paste &amp; Scan" Margin="0,0,8,8"
                             ToolTip="Scan a screenshot that is on the clipboard" Click="PasteScan_Click" />
                     <Button x:Name="BtnSnip" Style="{StaticResource Btn}" Content="✂️  Snip Player" Margin="0,0,8,8"
-                            ToolTip="Read the name under the cursor and open that player" Click="Snip_Click" />
+                            ToolTip="Drag a box over the player's name on the table: the name is read from the marked area and the player is opened (an unknown name opens the create dialog with the reading filled in). A plain click reads the name plate under the cursor"
+                            Click="Snip_Click" />
+                    <Button x:Name="BtnBoxHere" Style="{StaticResource Btn}" Content="📌  Box here" Margin="0,0,8,8"
+                            ToolTip="Put a hover box for the player selected in the list where the mouse was last on a table. Ctrl + middle mouse button does the same right on the table"
+                            Click="AddBoxHere_Click" />
                     <Button x:Name="BtnBoxes" Style="{StaticResource Btn}" Content="👁  Boxes: ON" Margin="0,0,8,8"
                             ToolTip="Show or hide the hover boxes" Click="ToggleBoxes_Click" />
                     <Button x:Name="BtnOnlyDb" Style="{StaticResource Btn}" Content="🗂  DB only: OFF" Margin="0,0,8,8"
@@ -348,7 +352,12 @@
             <Border Grid.Column="0" Background="#0F1626" BorderBrush="{StaticResource Line}" BorderThickness="0,0,1,0">
                 <DockPanel>
                     <DockPanel DockPanel.Dock="Top" Margin="12,10,12,6">
-                        <TextBlock x:Name="ListCount" DockPanel.Dock="Right" Foreground="#64748B" FontSize="11" VerticalAlignment="Center" />
+                        <Button x:Name="BtnAddToTable" DockPanel.Dock="Right" Style="{StaticResource BtnAccent}"
+                                Content="➕  Add to table" Padding="9,3,9,3" FontSize="11" Margin="8,0,0,0"
+                                ToolTip="Put a hover box for the player selected below where the mouse was last on a table (Ctrl + middle mouse button on the name does the same). Nothing on the table yet? The marking layer opens, so you can drag where the name is"
+                                Click="AddToTable_Click" />
+                        <TextBlock x:Name="ListCount" DockPanel.Dock="Right" Foreground="#64748B" FontSize="11"
+                                   VerticalAlignment="Center" Margin="8,0,0,0" />
                         <TextBlock Text="PLAYERS" Foreground="#94A3B8" FontSize="10" FontWeight="Bold" VerticalAlignment="Center" />
                     </DockPanel>
                     <ScrollViewer DockPanel.Dock="Top" MaxHeight="104" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
@@ -572,14 +581,27 @@
                         <LineBreak />
                         On the tables:<LineBreak />
                         middle mouse   capture the tables and read the names<LineBreak />
+                        middle drag    move the box under the mouse where you want it<LineBreak />
+                        Ctrl+middle    put a box for the player selected in the list, right there<LineBreak />
                         hover a box    show the player's tags and notes<LineBreak />
                         click a box    write a note (tags included) right there<LineBreak />
                         Ctrl+click     remove that single box<LineBreak />
                         right-click    not used (it folds on Unibet)<LineBreak />
                         <LineBreak />
+                        ✂ Snip Player    drag a box over the name and it is read from that area<LineBreak />
+                        (a plain click reads the name plate under the cursor)<LineBreak />
+                        <LineBreak />
+                        Found a player in the search? Pick it in the list and press<LineBreak />
+                        "Add to table" - the box is put where the mouse last was on a table,<LineBreak />
+                        or you drag where the name is when the table is not seen yet.<LineBreak />
+                        <LineBreak />
                         Boxes are green when the player is known; tagged players get their tag colour<LineBreak />
                         and the tag names next to the box. "DB only" hides everyone else.<LineBreak />
                         The AUTO picker rescans on a timer, so the boxes follow players who come and go.<LineBreak />
+                        A box placed by hand (Ctrl+middle, or "Box here") stays until 🧹 Clear or a restart,<LineBreak />
+                        which is the way to box a player whose name the OCR reads wrong or not at all.<LineBreak />
+                        A scan reads every name plate on its own as well (that takes a moment longer and is<LineBreak />
+                        noticeably more accurate), and it keeps the boxes when a table could not be read.<LineBreak />
                         <LineBreak />
                         Notes save themselves while you type (about a second after you stop).<LineBreak />
                         Aliases let you find a player under other nick names too.<LineBreak />

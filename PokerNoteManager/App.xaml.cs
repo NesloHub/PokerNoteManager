@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Diagnostics;
+using System.Globalization;
 using System.IO;
 using System.Linq;
 using System.Runtime.InteropServices;
@@ -8,6 +9,8 @@ using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
 using System.Windows;
+using System.Windows.Media;
+using System.Windows.Media.Imaging;
 using System.Windows.Threading;
 using PokerNoteManager.Vision;
 using Tesseract;
@@ -193,6 +196,95 @@ namespace PokerNoteManager
             catch (Exception ex) { PvLog.Error("PrepareNativePaths", ex); }
         }
 
+        /// <summary>
+        /// Checks the name rules that took the most tuning: which readings are not names at all (the stack
+        /// size and the pot line under/above a name), which readings still match a database player (a client
+        /// font costs letters, but a different digit is a different player) and that a marked area is read.
+        /// </summary>
+        private static string NameRuleSelfTest()
+        {
+            List<string> problems = new();
+
+            foreach (string notAName in new[] { "213 BB", "100 BB", "2043BB", "1 BB", "151.7 BB", "Total pot 1", "Hand 2435663790" })
+                if (TableScanner.LooksLikePlayerName(notAName)) problems.Add($"'{notAName}' was taken for a name");
+
+            foreach (string name in new[] { "Sistahumlan", "ruhhy", "Ez-E", "7up", "madmax789", "C0ol" })
+                if (!TableScanner.LooksLikePlayerName(name)) problems.Add($"'{name}' was not taken for a name");
+
+            Dictionary<string, string> keys = new(StringComparer.OrdinalIgnoreCase)
+            {
+                { "Sistahumlan", TableScanner.NormalizeName("Sistahumlan") },
+                { "madmax717", TableScanner.NormalizeName("madmax717") },
+                { "JimSteel", TableScanner.NormalizeName("JimSteel") }
+            };
+            if (TableScanner.MatchPlayer("'Sig;ahumlan", keys).Key != "Sistahumlan")
+                problems.Add("the reading ''Sig;ahumlan' did not match 'Sistahumlan'");
+            if (TableScanner.MatchPlayer("Sistahumlan", keys).Key != "Sistahumlan")
+                problems.Add("'Sistahumlan' did not match itself");
+            if (TableScanner.MatchPlayer("madmax789", keys).Key.Length != 0)
+                problems.Add("'madmax789' matched 'madmax717' (other digits)");
+            if (TableScanner.MatchPlayer("JimSteele", keys).Key != "JimSteel")
+                problems.Add("'JimSteele' did not match 'JimSteel'");
+            if (TableScanner.MatchPlayer("xXx_Pro_xXx", keys).Key.Length != 0)
+                problems.Add("a name that is in no database matched one");
+
+            // The marked area of "Snip Player": a mark over the name and the stack below it has to give the
+            // name, not the stack size.
+            using (OpenCvSharp.Mat plate = RenderNamePlate("Sistahumlan", "151.7 BB"))
+            {
+                using TesseractEngine engine = TableScanner.CreateEngine();
+                string marked = TableScanner.ReadNameIn(plate, engine, out float confidence);
+                if (!marked.Contains("humlan", StringComparison.OrdinalIgnoreCase))
+                    problems.Add($"the marked area gave '{marked}' (conf {confidence:0})");
+
+                string near = TableScanner.ReadNameNear(plate, plate.Width / 2, plate.Height / 2 - 12, engine, out float nearConf);
+                if (!near.Contains("humlan", StringComparison.OrdinalIgnoreCase))
+                    problems.Add($"the click under the cursor gave '{near}' (conf {nearConf:0})");
+            }
+
+            return problems.Count == 0 ? "OK - 20 reading checks" : string.Join("; ", problems);
+        }
+
+        /// <summary>
+        /// A name plate as the clients draw it: light text on a dark plate, with the stack size right under
+        /// it (the row that used to be read instead of the name). Drawn 4x and scaled down so the text is
+        /// crisp like real client text.
+        /// </summary>
+        private static OpenCvSharp.Mat RenderNamePlate(string name, string stack)
+        {
+            const int scale = 4, w = 220, h = 60;
+            DrawingVisual visual = new();
+            using (DrawingContext dc = visual.RenderOpen())
+            {
+                dc.DrawRectangle(new SolidColorBrush(Color.FromRgb(0x12, 0x18, 0x24)), null,
+                                 new System.Windows.Rect(0, 0, w * scale, h * scale));
+                dc.DrawRectangle(new SolidColorBrush(Color.FromRgb(0x24, 0x2C, 0x3A)), null,
+                                 new System.Windows.Rect(20 * scale, 12 * scale, 180 * scale, 40 * scale));
+
+                FormattedText nameText = new(name, CultureInfo.InvariantCulture, FlowDirection.LeftToRight,
+                                             new Typeface("Segoe UI"), 9 * scale, Brushes.White, 96);
+                dc.DrawText(nameText, new System.Windows.Point(26 * scale, 15 * scale));
+
+                FormattedText stackText = new(stack, CultureInfo.InvariantCulture, FlowDirection.LeftToRight,
+                                              new Typeface("Segoe UI"), 9 * scale,
+                                              new SolidColorBrush(Color.FromRgb(0x4A, 0xD6, 0x6A)), 96);
+                dc.DrawText(stackText, new System.Windows.Point(26 * scale, 33 * scale));
+            }
+
+            RenderTargetBitmap big = new(w * scale, h * scale, 96, 96, PixelFormats.Pbgra32);
+            big.Render(visual);
+            byte[] buffer = new byte[w * scale * h * scale * 4];
+            big.CopyPixels(buffer, w * scale * 4, 0);
+            using OpenCvSharp.Mat bgra = new(h * scale, w * scale, OpenCvSharp.MatType.CV_8UC4);
+            Marshal.Copy(buffer, 0, bgra.Data, buffer.Length);
+            using OpenCvSharp.Mat bgr = new();
+            OpenCvSharp.Cv2.CvtColor(bgra, bgr, OpenCvSharp.ColorConversionCodes.BGRA2BGR);
+
+            OpenCvSharp.Mat small = new();
+            OpenCvSharp.Cv2.Resize(bgr, small, new OpenCvSharp.Size(w, h), 0, 0, OpenCvSharp.InterpolationFlags.Area);
+            return small;
+        }
+
         /// <summary>Writes %LocalAppData%\PokerVisionHUD\selftest.txt (see the --selftest-ocr switch).</summary>
         private static void RunOcrSelfTest()
         {
@@ -247,6 +339,17 @@ namespace PokerNoteManager
                     inner = inner.InnerException;
                 }
                 PvLog.Error("OcrSelfTest OpenCV", ex);
+            }
+
+            try
+            {
+                report.AppendLine("RESULT rules : " + NameRuleSelfTest());
+            }
+            catch (Exception ex)
+            {
+                report.AppendLine("RESULT rules : FAILED");
+                report.AppendLine("   " + ex.GetType().Name + ": " + ex.Message);
+                PvLog.Error("OcrSelfTest rules", ex);
             }
 
             try
@@ -384,7 +487,8 @@ namespace PokerNoteManager
 
                 // The scan bar must show every button: report the laid out size of each one.
                 foreach (string name in new[] { "BtnScan", "BtnPasteScan", "BtnSnip", "BtnBoxes", "BtnOnlyDb",
-                                                "BtnClearBoxes", "BtnDebugShot", "ScreenPicker", "AutoScanPicker" })
+                                                "BtnClearBoxes", "BtnDebugShot", "BtnAddToTable", "BtnBoxHere",
+                                                "ScreenPicker", "AutoScanPicker" })
                 {
                     if (window.FindName(name) is System.Windows.FrameworkElement element)
                         report.AppendLine($"   {name,-16} {element.ActualWidth:0}x{element.ActualHeight:0} " +
@@ -530,7 +634,7 @@ namespace PokerNoteManager
         {
             StringBuilder report = new();
             report.AppendLine($"Poker Notes mouse hook self test   {DateTime.Now:yyyy-MM-dd HH:mm:ss}");
-            int right = 0, left = 0, middle = 0, leftWithCtrl = 0;
+            int right = 0, left = 0, middle = 0, leftWithCtrl = 0, middleWithCtrl = 0, dragStarted = 0, dragEnded = 0;
             System.Windows.Window? target = null;
             Vision.GlobalMouseHook? hook = null;
             GetCursorPos(out POINT saved);
@@ -561,7 +665,9 @@ namespace PokerNoteManager
                 hook = new Vision.GlobalMouseHook();
                 hook.RightClicked += (x, y) => right++;
                 hook.LeftClicked += (x, y, ctrl) => { if (ctrl) leftWithCtrl++; else left++; };
-                hook.MiddleClicked += (x, y) => middle++;
+                hook.MiddleClicked += (x, y, ctrl) => { if (ctrl) middleWithCtrl++; else middle++; };
+                hook.DragStarted += (x, y) => dragStarted++;
+                hook.DragEnded += (x, y) => dragEnded++;
                 hook.Start();
                 report.AppendLine($"RESULT Hook  : {(hook.IsRunning ? "installed" : "FAILED - not installed")}");
 
@@ -581,6 +687,20 @@ namespace PokerNoteManager
                             mouse_event(MOUSEEVENTF_LEFTDOWN | MOUSEEVENTF_LEFTUP, 0, 0, 0, IntPtr.Zero);
                             keybd_event(VK_CONTROL, 0, KEYEVENTF_KEYUP, UIntPtr.Zero);
                             break;
+                        case 5:     // Ctrl + middle click, the shortcut that boxes a player by hand
+                            keybd_event(VK_CONTROL, 0, 0, UIntPtr.Zero);
+                            mouse_event(MOUSEEVENTF_MIDDLEDOWN | MOUSEEVENTF_MIDDLEUP, 0, 0, 0, IntPtr.Zero);
+                            keybd_event(VK_CONTROL, 0, KEYEVENTF_KEYUP, UIntPtr.Zero);
+                            break;
+                        case 6:     // middle button down and dragged: that is how a box is moved
+                            mouse_event(MOUSEEVENTF_MIDDLEDOWN, 0, 0, 0, IntPtr.Zero);
+                            break;
+                        case 7:
+                            SetCursorPos((int)target.Left + 200, (int)target.Top + 150);
+                            break;
+                        case 8:
+                            mouse_event(MOUSEEVENTF_MIDDLEUP, 0, 0, 0, IntPtr.Zero);
+                            break;
                         default:
                             timer.Stop();
                             dispatcher.BeginInvokeShutdown(System.Windows.Threading.DispatcherPriority.Background);
@@ -590,10 +710,11 @@ namespace PokerNoteManager
                 timer.Start();
                 System.Windows.Threading.Dispatcher.Run();
 
-                report.AppendLine($"RESULT Clicks: left={left} ctrl+left={leftWithCtrl} middle={middle} right={right} " +
-                                  "(at least 1 of the first three expected)");
-                report.AppendLine(left >= 1 && leftWithCtrl >= 1 && middle >= 1
-                    ? "RESULT MouseHook: OK - plain, Ctrl and middle clicks all reach the program"
+                report.AppendLine($"RESULT Clicks: left={left} ctrl+left={leftWithCtrl} middle={middle} " +
+                                  $"ctrl+middle={middleWithCtrl} right={right} drags={dragStarted}/{dragEnded}");
+                report.AppendLine(left >= 1 && leftWithCtrl >= 1 && middle >= 1 && middleWithCtrl >= 1
+                    ? "RESULT MouseHook: OK - plain, Ctrl and middle clicks all reach the program " +
+                      $"({(dragStarted == dragEnded ? "drag events balanced" : "WARNING: drag events unbalanced")})"
                     : "RESULT MouseHook: FAILED - a click did not reach the program");
             }
             catch (Exception ex)

@@ -22,9 +22,9 @@ namespace PokerNoteManager.Vision
         public string TableTitle { get; init; } = "";
         /// <summary>Window handle of the table the seat was read from (0 for clipboard scans).</summary>
         public IntPtr TableHandle { get; set; }
-        public string OcrText { get; init; } = "";
+        public string OcrText { get; set; } = "";
         public string PlayerKey { get; set; } = "";      // database key when the name was matched
-        public float Confidence { get; init; }
+        public float Confidence { get; set; }
         public double Distance { get; set; }             // 0 = exact, higher = fuzzier match
         public bool Matched => PlayerKey.Length > 0;
         /// <summary>Nameplate rectangle in physical screen pixels.</summary>
@@ -135,6 +135,34 @@ namespace PokerNoteManager.Vision
         {
             GetCursorPos(out POINT p);
             return (p.X, p.Y);
+        }
+
+        [DllImport("user32.dll")] private static extern IntPtr MonitorFromPoint(POINT point, uint flags);
+        private const uint MONITOR_DEFAULTTONEAREST = 2;
+
+        /// <summary>
+        /// The work area (without the taskbar) of the monitor a point lies on, in physical pixels. Used to
+        /// place the note editor so it can never end up off screen, on the wrong monitor or under the
+        /// taskbar - with several monitors and different DPI settings that is easy to get wrong.
+        /// </summary>
+        public static Rect WorkAreaForPoint(int x, int y)
+        {
+            try
+            {
+                IntPtr monitor = MonitorFromPoint(new POINT { X = x, Y = y }, MONITOR_DEFAULTTONEAREST);
+                if (monitor != IntPtr.Zero)
+                {
+                    MONITORINFO info = new() { cbSize = Marshal.SizeOf<MONITORINFO>() };
+                    if (GetMonitorInfo(monitor, ref info))
+                    {
+                        RECT w = info.rcWork;
+                        if (w.Right - w.Left > 100 && w.Bottom - w.Top > 100)
+                            return new Rect(w.Left, w.Top, w.Right - w.Left, w.Bottom - w.Top);
+                    }
+                }
+            }
+            catch (Exception ex) { PvLog.Error("WorkAreaForPoint", ex); }
+            return default;      // no useful monitor info: the caller keeps WPF's own placement
         }
 
         // ---------- capture ----------
@@ -307,6 +335,30 @@ namespace PokerNoteManager.Vision
             {
                 PvLog.Error("WindowUnderPoint", ex);
                 return null;
+            }
+        }
+
+        /// <summary>
+        /// True when the window under a point belongs to this program. "Snip Player" uses it so a click on
+        /// our own windows says so instead of reading the notes program's own text as a player name.
+        /// </summary>
+        public static bool IsOwnWindowAt(int x, int y)
+        {
+            try
+            {
+                IntPtr hWnd = WindowFromPoint(new POINT { X = x, Y = y });
+                if (hWnd == IntPtr.Zero) return false;
+
+                IntPtr root = GetAncestor(hWnd, GA_ROOT);
+                if (root != IntPtr.Zero) hWnd = root;
+
+                GetWindowThreadProcessId(hWnd, out uint pid);
+                return pid == (uint)Environment.ProcessId;
+            }
+            catch (Exception ex)
+            {
+                PvLog.Error("IsOwnWindowAt", ex);
+                return false;
             }
         }
 

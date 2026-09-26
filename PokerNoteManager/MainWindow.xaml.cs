@@ -58,6 +58,20 @@ namespace PokerNoteManager
         private string _notePopupPlayer = "";        // which player that editor is editing
         /// <summary>Boxes the user removed by hand; they stay hidden until Clear or a restart.</summary>
         private readonly HashSet<string> _hiddenBoxKeys = new(StringComparer.OrdinalIgnoreCase);
+        /// <summary>Boxes the user placed by hand ("Box here" / Ctrl+middle click). Never replaced by a scan.</summary>
+        private readonly List<SeatBox> _manualBoxes = new();
+        /// <summary>Where the user dragged a box to (key -> rect); a scan puts it back there.</summary>
+        private readonly Dictionary<string, Rect> _movedBoxes = new(StringComparer.OrdinalIgnoreCase);
+        /// <summary>One marking layer per screen while "Snip Player" waits for a marked area.</summary>
+        private readonly List<SnipOverlay> _snipOverlays = new();
+        /// <summary>What the marking layer does with the marked area (read a name, or box the chosen player).</summary>
+        private Action<System.Windows.Rect?> _snipDone = _ => { };
+        private SeatBox? _dragBox;
+        private int _dragOffsetX, _dragOffsetY;
+        private bool _dragging;
+        private int _lastTableX = -1, _lastTableY = -1;     // last mouse position over another program's window
+        private IntPtr _lastTableHandle = IntPtr.Zero;
+        private string _lastTableTitle = "";
         private bool _scanning;
         private ScanOutcome? _lastOutcome;
         private readonly object _ocrGate = new();        // the OCR engine is created once, from any thread
@@ -235,7 +249,11 @@ namespace PokerNoteManager
 
                 _mouse = new GlobalMouseHook();
                 _mouse.MouseMoved += HoverMove;
+                _mouse.MouseMoved += RememberTablePoint;
                 _mouse.MiddleClicked += MiddleClickScan;
+                _mouse.DragStarted += BoxDragStart;
+                _mouse.Dragging += BoxDragMove;
+                _mouse.DragEnded += BoxDragEnd;
                 _mouse.LeftClicked += LeftClickOnBox;
                 _mouse.Start();
 
@@ -466,7 +484,223 @@ namespace PokerNoteManager
             }
         }
 
-        private void MiddleClickScan(int x, int y) => RunScan("middle mouse", x, y);
+        private void MiddleClickScan(int x, int y, bool ctrl)
+        {
+            // Ctrl + middle click is the manual way to box a player: put the box of the player that is
+            // selected in the main window where the mouse is. Middle click alone still scans.
+            if (ctrl) AddManualBox(x, y);
+            else RunScan("middle mouse", x, y);
+        }
+
+        /// <summary>
+        /// Remembers where the mouse last was over another program's window, so the "Box here" button in
+        /// the main window can place a box there - the cursor is on the button when it is pressed.
+        /// </summary>
+        private void RememberTablePoint(int x, int y)
+        {
+            try
+            {
+                TableWindow? under = ScreenCapture.WindowUnderPoint(x, y);
+                if (under == null) return;
+
+                _lastTableX = x;
+                _lastTableY = y;
+                _lastTableHandle = under.Handle;
+                _lastTableTitle = under.Title;
+            }
+            catch (Exception ex) { PvLog.Throttled("RememberTablePoint", "!! " + ex.Message, 120); }
+        }
+
+        /// <summary>
+        /// Middle mouse button held down and moved over a box: the box is dragged along and stays where it is
+        /// put (a scan puts it back there). Handy when a name plate sits slightly off, or when the box covers
+        /// the stack.
+        /// </summary>
+        private void BoxDragStart(int x, int y)
+        {
+            try
+            {
+                if (!_boxesOn) return;
+                SeatBox? hit = FindBoxAt(x, y);
+                if (hit == null) return;
+
+                _dragBox = hit;
+                _dragOffsetX = x - hit.ScreenRect.X;
+                _dragOffsetY = y - hit.ScreenRect.Y;
+                _dragging = true;
+                ScanStatus.Text = $"Moving the box for {(hit.Matched ? hit.PlayerKey : hit.OcrText)} - " +
+                                  "release where it should stay.";
+            }
+            catch (Exception ex) { PvLog.Error("BoxDragStart", ex); }
+        }
+
+        private void BoxDragMove(int x, int y)
+        {
+            if (!_dragging || _dragBox == null) return;
+            try
+            {
+                Rect current = _dragBox.ScreenRect;
+                _dragBox.ScreenRect = new Rect(x - _dragOffsetX, y - _dragOffsetY, current.Width, current.Height);
+                RefreshBoxes();
+            }
+            catch (Exception ex) { PvLog.Error("BoxDragMove", ex); }
+        }
+
+        private void BoxDragEnd(int x, int y)
+        {
+            if (!_dragging || _dragBox == null) return;
+            try
+            {
+                SeatBox box = _dragBox;
+                _dragBox = null;
+                _dragging = false;
+
+                foreach (string key in KeysFor(box)) _movedBoxes[key] = box.ScreenRect;
+                RefreshBoxes();
+
+                string label = box.Matched ? box.PlayerKey : "'" + box.OcrText + "'";
+                ScanStatus.Text = $"Box for {label} moved. It stays there until you press 🧹 Clear or drag it again.";
+                PvLog.Write($"[SCAN] box moved: {BoxKey(box)} -> {box.ScreenRect.X},{box.ScreenRect.Y}");
+            }
+            catch (Exception ex) { PvLog.Error("BoxDragEnd", ex); }
+        }
+
+        /// <summary>
+        /// The keys a box can be remembered under. A reading that turns into a known player (or the other way
+        /// round) changes the key, so both spellings are remembered and a dragged box keeps its place.
+        /// </summary>
+        private static IEnumerable<string> KeysFor(SeatBox box)
+        {
+            yield return BoxKey(box);
+            if (box.OcrText.Length > 0)
+                yield return BoxFilter.TableKey(box) + "|read:" + TableScanner.NormalizeName(box.OcrText);
+            if (box.Matched)
+                yield return BoxFilter.TableKey(box) + "|player:" + box.PlayerKey;
+        }
+
+        /// <summary>Puts every box the user dragged back where it was put.</summary>
+        private void ApplyMovedPositions()
+        {
+            if (_movedBoxes.Count == 0) return;
+            foreach (SeatBox box in _lastBoxes)
+            {
+                foreach (string key in KeysFor(box))
+                {
+                    if (!_movedBoxes.TryGetValue(key, out Rect moved)) continue;
+                    box.ScreenRect = moved;
+                    break;
+                }
+            }
+        }
+
+        private void AddBoxHere_Click(object sender, RoutedEventArgs e) => AddSelectedPlayerToTable("Box here");
+
+        /// <summary>
+        /// The "Add to table" button: puts a hover box for the player that is selected in the list (the player
+        /// that was just found in the search) where the mouse was last on a table. When the program has not
+        /// seen the mouse on a table yet, the marking layer is shown instead, so the box can simply be drawn
+        /// where the name is.
+        /// </summary>
+        private void AddToTable_Click(object sender, RoutedEventArgs e) => AddSelectedPlayerToTable("Add to table");
+
+        private void AddSelectedPlayerToTable(string source)
+        {
+            string key = (_currentKey ?? "").Trim();
+            if (key.Length == 0 || !_db.Players.ContainsKey(key))
+            {
+                ScanStatus.Text = "Pick the player in the list on the left first, then press \"Add to table\" " +
+                                  "(Ctrl + middle mouse button right on the name does the same).";
+                return;
+            }
+
+            if (_lastTableX >= 0 && _lastTableY >= 0)
+            {
+                AddManualBox(_lastTableX, _lastTableY, key);
+                return;
+            }
+
+            // Nothing to place the box on yet: mark the name on the table instead of only complaining.
+            _snipDone = area => PlaceMarkedBox(area, key);
+            ShowSnipLayers($"Drag a box where {key}'s name is (or just click on it) - the box is put there.",
+                           $"[SNIP] marking layer shown ({source} for '{key}')");
+        }
+
+        /// <summary>Puts the box for a player on the area the user marked with the "Add to table" layer.</summary>
+        private void PlaceMarkedBox(System.Windows.Rect? area, string key)
+        {
+            CloseSnipOverlays();
+            if (area == null)
+            {
+                ScanStatus.Text = "Cancelled - no box added.";
+                return;
+            }
+
+            System.Windows.Rect mark = area.Value;
+            Rect rect = new((int)mark.X, (int)mark.Y, Math.Max(1, (int)mark.Width), Math.Max(1, (int)mark.Height));
+            bool dragged = rect.Width >= 12 && rect.Height >= 10;
+
+            AddManualBox(dragged ? (int)(rect.X + rect.Width / 2) : rect.X + 1, dragged ? (int)(rect.Y + rect.Height / 2) : rect.Y + 1,
+                         key, dragged ? rect : (Rect?)null);
+        }
+
+        /// <summary>
+        /// Puts a hover box for the player selected in the main window at a point on the screen. This is the
+        /// manual way to box a player whose name plate the OCR reads wrong or not at all: the box behaves
+        /// exactly like a scanned one (hover shows tags and notes, click opens the editor, Ctrl+click
+        /// removes it, Clear removes all of them) and no scan ever deletes it.
+        /// </summary>
+        /// <param name="x">Where the box should sit (its centre).</param>
+        /// <param name="y">Where the box should sit (its centre).</param>
+        /// <param name="player">The player to box; the selection in the list is used when this is null.</param>
+        /// <param name="area">The name area that was marked or read - the box takes that size when it is known.</param>
+        private void AddManualBox(int x, int y, string? player = null, Rect? area = null)
+        {
+            try
+            {
+                string key = (player ?? _currentKey ?? "").Trim();
+                if (key.Length == 0 || !_db.Players.ContainsKey(key))
+                {
+                    ScanStatus.Text = "Pick the player in the list on the left first, then put the box where " +
+                                      "the name is (Ctrl + middle mouse button on the table).";
+                    return;
+                }
+
+                // A box the size of the name plate that was read/marked looks right; without a known area the
+                // default box (140x26) has to do.
+                Rect rect = area.HasValue && area.Value.Width >= 24 && area.Value.Height >= 8
+                    ? new Rect(area.Value.X - 3, area.Value.Y - 3, area.Value.Width + 6, area.Value.Height + 6)
+                    : new Rect(x - 70, y - 13, 140, 26);
+
+                TableWindow? under = ScreenCapture.WindowUnderPoint(x, y);
+                SeatBox box = new()
+                {
+                    TableTitle = under?.Title ?? "manual box",
+                    TableHandle = under?.Handle ?? IntPtr.Zero,
+                    OcrText = key,
+                    PlayerKey = key,
+                    Confidence = 100,
+                    Distance = 0,
+                    ScreenRect = rect
+                };
+
+                string boxKey = BoxKey(box);
+                _manualBoxes.RemoveAll(b => string.Equals(BoxKey(b), boxKey, StringComparison.OrdinalIgnoreCase));
+                _manualBoxes.Add(box);
+                _hiddenBoxKeys.Remove(boxKey);          // adding it again must show it, not stay hidden
+                _lastBoxes.RemoveAll(b => string.Equals(BoxKey(b), boxKey, StringComparison.OrdinalIgnoreCase));
+                _lastBoxes.Add(box);
+                RefreshBoxes();
+
+                ScanStatus.Text = $"Box added for {key} here ({_manualBoxes.Count} placed by hand). " +
+                                  "Ctrl+click removes that one, 🧹 Clear removes all boxes.";
+                PvLog.Write($"[SCAN] manual box for '{key}' at {x},{y} on '{(under?.Title ?? "?")}'");
+            }
+            catch (Exception ex)
+            {
+                PvLog.Error("AddManualBox", ex);
+                ScanStatus.Text = "Could not add the box: " + ex.Message;
+            }
+        }
 
         private void LeftClickOnBox(int x, int y, bool ctrl)
         {
@@ -612,8 +846,26 @@ namespace PokerNoteManager
                         seat.PlayerKey = key;
                         seat.Distance = distance;
 
-                        // matched names always, unknown readings only when the OCR was confident enough
-                        if (key.Length == 0 && seat.Confidence < 45) continue;
+                        // A known player always gets a box. An unknown reading is kept when the OCR was
+                        // confident enough, or when it looks like exactly one player in the database - then
+                        // the box is a grey reminder that this player needs a look, instead of the player
+                        // silently vanishing from the screen. Everything else is noise from chips, avatars,
+                        // logos or window chrome.
+                        if (key.Length == 0)
+                        {
+                            string similar = TableScanner.FindSimilarName(seat.OcrText, normalizedKeys);
+                            double needed = similar.Length > 0 ? 25 : 45;
+                            if (seat.Confidence < needed)
+                            {
+                                PvLog.Throttled("ScanDropped:" + seat.OcrText,
+                                    $"[SCAN] '{seat.OcrText}' (conf {seat.Confidence:0}) dropped as noise" +
+                                    (similar.Length > 0 ? $", it looks like '{similar}'" : ""), 60);
+                                continue;
+                            }
+                            if (similar.Length > 0)
+                                PvLog.Throttled("ScanSimilar:" + seat.OcrText,
+                                    $"[SCAN] '{seat.OcrText}' (conf {seat.Confidence:0}) kept as unknown - it looks like '{similar}'", 60);
+                        }
                         if (kept >= 12) break;
 
                         seat.ScreenRect = new Rect(seat.ScreenRect.X + window.Bounds.X, seat.ScreenRect.Y + window.Bounds.Y,
@@ -648,8 +900,18 @@ namespace PokerNoteManager
             _lastFrames.AddRange(frames);
 
             _lastOutcome = outcome;
-            _lastBoxes.Clear();
-            _lastBoxes.AddRange(outcome.Boxes);
+
+            // A scan that finds nothing at all is usually a covered or just resized table, not every player
+            // leaving at once. The boxes from the last good scan are kept, so a note never disappears from
+            // the screen because of one bad capture; "Clear" removes them for good.
+            bool keepPrevious = outcome.Boxes.Count == 0 && _lastBoxes.Count > 0;
+            if (!keepPrevious)
+            {
+                _lastBoxes.Clear();
+                _lastBoxes.AddRange(outcome.Boxes);
+            }
+            MergeManualBoxes();
+            ApplyMovedPositions();
 
             RefreshBoxes();
 
@@ -661,15 +923,32 @@ namespace PokerNoteManager
 
             ScanStatus.Text = outcome.Message.Length > 0
                 ? outcome.Message
-                : $"{shown} box(es) on {outcome.TablesSeen} window(s) · " +
-                  $"{outcome.MatchedCount} known, {outcome.UnknownCount} left out of the box list · " +
-                  (multiTable > 0 ? $"{multiTable} player(s) sitting at more than one table · " : "") +
-                  (_onlyDatabase && outcome.UnknownCount > 0
-                      ? $"{outcome.UnknownCount} hidden by the database filter · "
-                      : "") +
-                  (shown > 0
-                      ? "click a box to write a note, Ctrl+click to remove that box"
-                      : "nothing found - pick the right screen and check that the table is not covered");
+                : keepPrevious
+                  ? $"No names found in this scan - the {shown} box(es) from the last scan are kept " +
+                    "(🧹 Clear removes them)."
+                  : $"{shown} box(es) on {outcome.TablesSeen} window(s) · " +
+                    $"{outcome.MatchedCount} known, {outcome.UnknownCount} left out of the box list · " +
+                    (multiTable > 0 ? $"{multiTable} player(s) sitting at more than one table · " : "") +
+                    (_onlyDatabase && outcome.UnknownCount > 0
+                        ? $"{outcome.UnknownCount} hidden by the database filter · "
+                        : "") +
+                    (shown > 0
+                        ? "click a box to write a note, Ctrl+click to remove that box, Ctrl+middle click boxes a player by hand"
+                        : "nothing found - pick the right screen and check that the table is not covered");
+        }
+
+        /// <summary>
+        /// Boxes the user placed by hand are part of every result: a scan never removes them. That is the
+        /// way to box a player whose name plate the OCR cannot read at all.
+        /// </summary>
+        private void MergeManualBoxes()
+        {
+            foreach (SeatBox box in _manualBoxes)
+            {
+                string key = BoxKey(box);
+                if (!_lastBoxes.Any(b => string.Equals(BoxKey(b), key, StringComparison.OrdinalIgnoreCase)))
+                    _lastBoxes.Add(box);
+            }
         }
 
         /// <summary>Boxes that pass the "only the database" filter and are not removed by hand.</summary>
@@ -781,7 +1060,16 @@ namespace PokerNoteManager
             try
             {
                 SeatBox? hit = FindBoxAt(x, y);
-                if (hit == null) return;
+                if (hit == null)
+                {
+                    // The boxes are redrawn by every scan, so say why the click did nothing instead of
+                    // doing nothing at all (that is what made the editor look like it would not open).
+                    ScanStatus.Text = _boxesOn
+                        ? "No box under the cursor - the boxes are redrawn by every scan (middle mouse rescans, " +
+                          "Ctrl+middle click boxes the selected player right where the mouse is)."
+                        : "The hover boxes are switched off (👁 Boxes).";
+                    return;
+                }
                 OpenNotePopup(hit, x, y);
             }
             catch (Exception ex)
@@ -805,19 +1093,30 @@ namespace PokerNoteManager
                 // The same player is often seated at several tables: clicking the second box must not
                 // throw away what is already typed. Bring the open editor forward instead, and save
                 // before replacing it when another player is clicked.
-                if (_notePopup != null)
+                if (_notePopup is { } open && open.IsUsable)
                 {
-                    if (string.Equals(_notePopupPlayer, name, StringComparison.OrdinalIgnoreCase) && _notePopup.IsLoaded)
+                    if (string.Equals(_notePopupPlayer, name, StringComparison.OrdinalIgnoreCase))
                     {
-                        _notePopup.Activate();
+                        open.BringToFront();
                         ScanStatus.Text = $"The note editor for {name} is already open.";
                         return;
                     }
-                    if (_notePopup.HasUnsavedChanges) _notePopup.SaveNow();
-                    else _notePopup.CloseSafely();
+
+                    // Another player: save what is typed and *always* close this editor. Leaving it open
+                    // made a stack of stale editors that sat on top of the new one (and its closed flag
+                    // then swallowed the next click), which is what made the editor "not come up".
+                    if (open.HasUnsavedChanges) open.SaveNow();
+                    open.CloseSafely("replaced by another player");
+                }
+                else if (_notePopup != null)
+                {
+                    // An editor that never reached the screen (or is on its way out) must never block the
+                    // next click - that is what made a click look like it did nothing at all.
+                    _notePopup = null;
+                    _notePopupPlayer = "";
                 }
 
-                _notePopup?.CloseSafely();
+                long started = Environment.TickCount64;
                 NotePopup popup = new(
                     known: known,
                     playerName: name,
@@ -827,7 +1126,12 @@ namespace PokerNoteManager
                     onSave: (savedName, savedTags, savedNote) => SaveFromPopup(box, savedName, savedTags, savedNote),
                     openInMain: () => OpenPlayer(known ? box.PlayerKey : name),
                     physX: physX,
-                    physY: physY);
+                    physY: physY,
+                    // A reading that was *not* matched may still be one character off an existing player:
+                    // say so in the editor instead of silently creating a duplicate.
+                    similarName: known
+                        ? ""
+                        : TableScanner.FindSimilarName(reading, _db.Players.Keys.ToDictionary(k => k, TableScanner.NormalizeName)));
 
                 _notePopup = popup;
                 _notePopupPlayer = name;
@@ -837,6 +1141,7 @@ namespace PokerNoteManager
                 };
 
                 popup.Show();
+                PvLog.Throttled("PopupOpen", $"[POPUP] '{name}' editor opened in {Environment.TickCount64 - started} ms", 20);
             }
             catch (Exception ex)
             {
@@ -1006,13 +1311,13 @@ namespace PokerNoteManager
         }
 
         /// <summary>
-        /// The 300x52 patch around the cursor, cut out of the window under the cursor when there is one
+        /// The 300x110 patch around the cursor, cut out of the window under the cursor when there is one
         /// (so a window that covers the table, or our own overlay, cannot pollute the reading).
         /// Falls back to a plain screen capture when the cursor is not over a normal window.
         /// </summary>
         private static Mat? CaptureAroundCursor(int cx, int cy, ScreenInfo? screen)
         {
-            const int halfWidth = 150, halfHeight = 26;
+            const int halfWidth = 150, halfHeight = 55;
             Mat? shot = null;
             try
             {
@@ -1050,13 +1355,171 @@ namespace PokerNoteManager
             return ScreenCapture.CaptureArea(area);
         }
 
-        /// <summary>Reads the name under the cursor and opens (or offers to create) that player.</summary>
+        /// <summary>
+        /// Snip Player: mark the area with the player's name with the mouse and the name is read from that
+        /// area. A name that is in the database opens that player (and gets a hover box right where the name
+        /// was); an unknown name opens the "create player" dialog with the reading filled in.
+        /// </summary>
         private void Snip_Click(object sender, RoutedEventArgs e)
         {
             try
             {
-                (int cx, int cy) = ScreenCapture.CursorPosition();
+                _snipDone = OnSnipMarked;
+                ShowSnipLayers("Mark the player's name: drag a box over it with the left mouse button " +
+                               "(Esc or a right click cancels, a plain left click reads the name under the cursor).",
+                               "[SNIP] marking layer shown");
+            }
+            catch (Exception ex)
+            {
+                PvLog.Error("Snip_Click", ex);
+                CloseSnipOverlays();
+                ScanStatus.Text = "Snip failed: " + ex.Message;
+            }
+        }
+
+        /// <summary>
+        /// Shows the drag-a-box layer on every screen. Pressing the button again while the layer is up cancels
+        /// the marking (it was started by mistake).
+        /// </summary>
+        private void ShowSnipLayers(string status, string log)
+        {
+            if (_snipOverlays.Count > 0)
+            {
+                CloseSnipOverlays();
+                ScanStatus.Text = "Snip cancelled.";
+                return;
+            }
+
+            _screens = ScreenCapture.GetScreens();
+            foreach (ScreenInfo screen in _screens)
+            {
+                SnipOverlay overlay = new(screen, area => _snipDone(area));
+                overlay.Show();
+                _snipOverlays.Add(overlay);
+            }
+
+            ScanStatus.Text = status;
+            PvLog.Write(log);
+        }
+
+        private void CloseSnipOverlays()
+        {
+            foreach (SnipOverlay overlay in _snipOverlays.ToList()) overlay.CloseSafely();
+            _snipOverlays.Clear();
+        }
+
+        /// <summary>The marked area came back (physical pixels): read the name in it and open/create the player.</summary>
+        private void OnSnipMarked(System.Windows.Rect? area)
+        {
+            CloseSnipOverlays();
+            try
+            {
+                if (area == null)
+                {
+                    ScanStatus.Text = "Snip cancelled.";
+                    return;
+                }
+
+                System.Windows.Rect mark = area.Value;
+                if (mark.Width < 12 || mark.Height < 10)
+                {
+                    // A click without dragging: read the name plate under the cursor instead.
+                    ReadNameAtCursor((int)mark.X, (int)mark.Y);
+                    return;
+                }
+
+                Rect marked = new((int)mark.X, (int)mark.Y, (int)mark.Width, (int)mark.Height);
+                using Mat? patch = CaptureMarkedArea(marked);
+                if (patch == null)
+                {
+                    ScanStatus.Text = "Could not capture the marked area.";
+                    return;
+                }
+
+                TesseractEngine engine = OcrEngine();
+                string text = TableScanner.ReadNameIn(patch, engine, out float confidence, out Rect namePlate);
+                if (text.Length == 0)
+                {
+                    // A mark that is off (too far to the side, a name with a logo above it) still gets the
+                    // reading around its middle as a second chance, the same reading a plain click uses.
+                    text = TableScanner.ReadNameNear(patch, patch.Width / 2, patch.Height / 2, engine,
+                                                     out confidence, out namePlate);
+                    if (text.Length > 0)
+                        PvLog.Write($"[SNIP] marked {mark.Width}x{mark.Height} -> '{text}' " +
+                                    $"(conf {confidence:0}, from the middle of the mark)");
+                }
+
+                if (text.Length == 0)
+                {
+                    ScanStatus.Text = "No name could be read in the marked area - mark the name a little tighter " +
+                                      "and try again.";
+                    return;
+                }
+
+                // The box goes on the name that was read, not over the whole mark: a mark is usually much
+                // bigger than the name (the stack below it, the felt around it), and a box that big looks
+                // like it belongs to somebody else.
+                Rect boxAt = namePlate.Width >= 24 && namePlate.Height >= 8
+                    ? new Rect(marked.X + namePlate.X, marked.Y + namePlate.Y, namePlate.Width, namePlate.Height)
+                    : marked;
+
+                PvLog.Write($"[SNIP] marked {mark.Width}x{mark.Height} -> '{text}' (conf {confidence:0})" +
+                            $", box {boxAt.Width}x{boxAt.Height}");
+                HandleReadName(text, boxAt);
+            }
+            catch (Exception ex)
+            {
+                PvLog.Error("OnSnipMarked", ex);
+                ScanStatus.Text = "Snip failed: " + ex.Message;
+            }
+        }
+
+        /// <summary>
+        /// The marked part of the window under it. PrintWindow is used when possible, so our own hover boxes
+        /// and the marking layer can never be read as a name; the plain screen is the fallback.
+        /// </summary>
+        private static Mat? CaptureMarkedArea(Rect area)
+        {
+            try
+            {
+                TableWindow? under = ScreenCapture.WindowUnderPoint(area.X + area.Width / 2, area.Y + area.Height / 2);
+                if (under != null)
+                {
+                    using Mat? frame = ScreenCapture.CaptureWindow(under);
+                    if (frame != null)
+                    {
+                        int x = area.X - under.Bounds.X;
+                        int y = area.Y - under.Bounds.Y;
+                        int w = Math.Min(area.Width, frame.Width - x);
+                        int h = Math.Min(area.Height, frame.Height - y);
+                        if (x >= 0 && y >= 0 && w >= 8 && h >= 6)
+                        {
+                            using Mat crop = new(frame, new Rect(x, y, w, h));
+                            return crop.Clone();
+                        }
+                    }
+                }
+            }
+            catch (Exception ex) { PvLog.Error("CaptureMarkedArea (window)", ex); }
+
+            return ScreenCapture.CaptureArea(area);
+        }
+
+        /// <summary>Reads the name plate at a point (a plain click on the marking layer).</summary>
+        private void ReadNameAtCursor(int cx, int cy)
+        {
+            try
+            {
                 ScreenInfo? screen = ResolveScreens(cx, cy).FirstOrDefault();
+
+                // Pointing at our own windows must never be read as a name: say so instead of offering to
+                // create a player out of the notes program's own text.
+                if (ScreenCapture.IsOwnWindowAt(cx, cy))
+                {
+                    ScanStatus.Text = "That is this program's own window - point at the player's name on the " +
+                                      "table and press Snip again.";
+                    return;
+                }
 
                 // Read the window *under* the cursor. That way the reading is the table's real text and
                 // our own hover boxes (which are drawn on top of the table) can never be OCR'd by mistake.
@@ -1067,32 +1530,69 @@ namespace PokerNoteManager
                     return;
                 }
 
+                // The cursor is in the middle of the patch. OCR runs on a few bands around it and only a
+                // reading that looks like a player name is accepted: a click on the felt, a chip stack or
+                // an avatar used to end in the prompt "create the player '‘'".
                 TesseractEngine engine = OcrEngine();
-                string text = TableScanner.ReadSingleLine(frame, engine);
-                if (text.Trim().Length == 0)
+                string text = TableScanner.ReadNameNear(frame, frame.Width / 2, frame.Height / 2, engine, out float confidence);
+                if (text.Length == 0)
                 {
-                    ScanStatus.Text = "No name found under the cursor - point at the player name and try again.";
+                    ScanStatus.Text = "No readable name under the cursor - point at the player's name and try " +
+                                      "again, or select the player in the list and press Ctrl + middle mouse " +
+                                      "button on the name to box him by hand.";
+                    PvLog.Throttled("SnipNoName", "[SNIP] no player name in the patch under the cursor", 15);
                     return;
                 }
-
-                Dictionary<string, string> keys = _db.Players.Keys.ToDictionary(k => k, TableScanner.NormalizeName);
-                (string key, _) = TableScanner.MatchPlayer(text, keys);
-                if (key.Length > 0)
-                {
-                    OpenPlayer(key);
-                    ScanStatus.Text = $"Read '{text}' -> opened {key}";
-                }
-                else
-                {
-                    CreatePlayerFromReading(text);
-                    ScanStatus.Text = $"Read '{text}' -> not in the database";
-                }
+                PvLog.Write($"[SNIP] cursor read '{text}' (conf {confidence:0})");
+                HandleReadName(text, null);
             }
             catch (Exception ex)
             {
-                PvLog.Error("Snip_Click", ex);
+                PvLog.Error("ReadNameAtCursor", ex);
                 ScanStatus.Text = "Snip failed: " + ex.Message;
             }
+        }
+
+        /// <summary>
+        /// A name that was read becomes a player: the matching player is opened, a name that only *looks* like
+        /// one is opened with a warning (so a duplicate is not created by accident), and otherwise the create
+        /// dialog opens with the reading filled in. When an area was marked, that player also gets a hover box
+        /// right where the name is.
+        /// </summary>
+        private void HandleReadName(string text, Rect? boxAt)
+        {
+            Dictionary<string, string> keys = _db.Players.Keys.ToDictionary(k => k, TableScanner.NormalizeName);
+            (string key, _) = TableScanner.MatchPlayer(text, keys);
+
+            if (key.Length == 0)
+            {
+                string similar = TableScanner.FindSimilarName(text, keys);
+                if (similar.Length > 0)
+                {
+                    OpenPlayer(similar);
+                    if (boxAt.HasValue) AddBoxAt(boxAt.Value);
+                    ScanStatus.Text = $"Read '{text}' -> looks like {similar}, which is opened and boxed. " +
+                                      "Correct the name above if it is the wrong player.";
+                    return;
+                }
+
+                ScanStatus.Text = $"Read '{text}' -> not in the database: fill in the name and press OK.";
+                CreatePlayerFromReading(text, boxAt);
+                return;
+            }
+
+            OpenPlayer(key);
+            if (boxAt.HasValue) AddBoxAt(boxAt.Value);
+            ScanStatus.Text = boxAt.HasValue
+                ? $"Read '{text}' -> opened {key} and put a box on the name."
+                : $"Read '{text}' -> opened {key}";
+        }
+
+        /// <summary>Puts a box for the player that was read right on the name area that was read.</summary>
+        private void AddBoxAt(Rect area)
+        {
+            if (area.Width <= 1 || area.Height <= 1) return;
+            AddManualBox(area.X + area.Width / 2, area.Y + area.Height / 2, null, area);
         }
 
         private void ToggleBoxes_Click(object sender, RoutedEventArgs e)
@@ -1122,9 +1622,14 @@ namespace PokerNoteManager
         {
             _lastBoxes.Clear();
             _lastOutcome = null;
+            int manual = _manualBoxes.Count;
+            _manualBoxes.Clear();                   // boxes placed by hand are cleared here too
+            _movedBoxes.Clear();                    // and the places boxes were dragged to are forgotten
             _hiddenBoxKeys.Clear();                 // a fresh start: removed boxes may come back on the next scan
             foreach (HoverOverlay overlay in _overlays.Values) overlay.ClearBoxes();
-            ScanStatus.Text = "Hover boxes cleared (boxes removed by right click are forgotten too).";
+            ScanStatus.Text = manual > 0
+                ? $"Hover boxes cleared ({manual} placed by hand included)."
+                : "Hover boxes cleared (boxes removed with Ctrl+click are forgotten too).";
         }
 
         /// <summary>Result list used by Paste &amp; Scan (and handy for reviewing a scan).</summary>
@@ -1170,8 +1675,11 @@ namespace PokerNoteManager
             ScanResultOverlay.Visibility = Visibility.Visible;
         }
 
-        /// <summary>Asks for a name (prefilled with the reading from the screen) and creates the player.</summary>
-        private void CreatePlayerFromReading(string reading)
+        /// <summary>
+        /// Asks for a name (prefilled with the reading from the screen) and creates the player. When
+        /// <paramref name="boxAt"/> is given the new player also gets a hover box right there.
+        /// </summary>
+        private void CreatePlayerFromReading(string reading, Rect? boxAt = null)
         {
             ShowPrompt("Create player", reading.Trim(),
                 "The name comes from the screen - correct it if the reading is off.",
@@ -1189,7 +1697,10 @@ namespace PokerNoteManager
                     }
 
                     OpenPlayer(key);
-                    ScanStatus.Text = $"'{key}' is ready - write the note.";
+                    if (boxAt.HasValue) AddBoxAt(boxAt.Value);
+                    ScanStatus.Text = boxAt.HasValue
+                        ? $"'{key}' is ready and has a box on the name - write the note."
+                        : $"'{key}' is ready - write the note.";
                 });
         }
 
@@ -2039,6 +2550,7 @@ namespace PokerNoteManager
             ScanResultOverlay.Visibility = Visibility.Collapsed;
             HelpOverlay.Visibility = Visibility.Collapsed;
             _promptAction = null;
+            CloseSnipOverlays();
             _notePopup?.CloseSafely();
         }
 

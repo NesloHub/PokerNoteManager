@@ -18,6 +18,7 @@ namespace PokerNoteManager.Vision
         private const int WM_MOUSEMOVE = 0x0200;
         private const int WM_LBUTTONDOWN = 0x0201;
         private const int WM_MBUTTONDOWN = 0x0207;
+        private const int WM_MBUTTONUP = 0x0208;
         private const int WM_RBUTTONDOWN = 0x0204;
 
         private delegate IntPtr HookProc(int nCode, IntPtr wParam, IntPtr lParam);
@@ -44,10 +45,23 @@ namespace PokerNoteManager.Vision
         private IntPtr _hook = IntPtr.Zero;
         private readonly HookProc _proc;          // keep a reference so it is not collected
         private long _lastMoveTicks;
+        private long _lastDragTicks;
+
+        // Middle button press-and-drag is how a hover box is moved on the table.
+        private bool _middleDown;
+        private bool _middleMoved;
+        private bool _middleCtrl;
+        private int _middleStartX, _middleStartY;
 
         /// <summary>Physical screen pixels.</summary>
         public event Action<int, int>? MouseMoved;
-        public event Action<int, int>? MiddleClicked;
+        /// <summary>Middle mouse button pressed and released without moving: scan, or (with ctrl) box a
+        /// player by hand. The ctrl flag is read when the button goes down.</summary>
+        public event Action<int, int, bool>? MiddleClicked;
+        /// <summary>Middle button held down and moved: start/move/end of a box drag.</summary>
+        public event Action<int, int>? DragStarted;
+        public event Action<int, int>? Dragging;
+        public event Action<int, int>? DragEnded;
         public event Action<int, int, bool>? LeftClicked;   // bool = ctrl held
         public event Action<int, int>? RightClicked;        // removes the hover box under the cursor
 
@@ -91,15 +105,41 @@ namespace PokerNoteManager.Vision
                             _lastMoveTicks = now;
                             MouseMoved?.Invoke(data.pt.X, data.pt.Y);
                         }
+
+                        if (_middleDown)
+                        {
+                            int dx = data.pt.X - _middleStartX, dy = data.pt.Y - _middleStartY;
+                            if (!_middleMoved && dx * dx + dy * dy > 36)      // 6 px: a real drag, not a click
+                            {
+                                _middleMoved = true;
+                                DragStarted?.Invoke(data.pt.X, data.pt.Y);
+                                _lastDragTicks = now;
+                            }
+                            else if (_middleMoved && now - _lastDragTicks >= 20)
+                            {
+                                _lastDragTicks = now;
+                                Dragging?.Invoke(data.pt.X, data.pt.Y);
+                            }
+                        }
                     }
                     else if (message == WM_MBUTTONDOWN)
                     {
-                        MiddleClicked?.Invoke(data.pt.X, data.pt.Y);
+                        _middleDown = true;
+                        _middleMoved = false;
+                        _middleCtrl = CtrlDown();
+                        _middleStartX = data.pt.X;
+                        _middleStartY = data.pt.Y;
+                    }
+                    else if (message == WM_MBUTTONUP)
+                    {
+                        if (!_middleDown) return CallNextHookEx(_hook, nCode, wParam, lParam);
+                        _middleDown = false;
+                        if (_middleMoved) DragEnded?.Invoke(data.pt.X, data.pt.Y);
+                        else MiddleClicked?.Invoke(data.pt.X, data.pt.Y, _middleCtrl);
                     }
                     else if (message == WM_LBUTTONDOWN)
                     {
-                        bool ctrl = (GetAsyncKeyState(0x11) & 0x8000) != 0;
-                        LeftClicked?.Invoke(data.pt.X, data.pt.Y, ctrl);
+                        LeftClicked?.Invoke(data.pt.X, data.pt.Y, CtrlDown());
                     }
                     else if (message == WM_RBUTTONDOWN)
                     {
@@ -115,6 +155,9 @@ namespace PokerNoteManager.Vision
         }
 
         [DllImport("user32.dll")] private static extern short GetAsyncKeyState(int vKey);
+
+        /// <summary>True while ctrl is held (the hook runs before the click reaches any window).</summary>
+        private static bool CtrlDown() => (GetAsyncKeyState(0x11) & 0x8000) != 0;
 
         public void Dispose() => Stop();
     }
